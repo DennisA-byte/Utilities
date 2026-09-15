@@ -170,34 +170,7 @@ const GameLibrary = (() => {
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
       <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
     </div>
-    <script>
-      (() => {
-        const toolbar = document.getElementById("utilities-toolbar");
-        const host = window.opener;
-        const library = host && host.GameLibrary;
-        const file = ${JSON.stringify(file)};
-        const title = ${JSON.stringify(title)};
-        const status = toolbar.querySelector("[data-status]");
-        const setStatus = (message) => { status.textContent = message; };
-        const callLibrary = async (callback, success) => { try { if (!library) throw new Error("The library window is unavailable."); await callback(); setStatus(success); } catch (error) { setStatus(error.message); } };
-        const action = (name, callback) => toolbar.querySelector("[data-action=\"" + name + "\"]").addEventListener("click", callback);
-        action("close", () => window.close());
-        action("dock", () => toolbar.classList.toggle("docked"));
-        action("minimize", (event) => { document.body.classList.toggle("utilities-minimized"); event.currentTarget.title = document.body.classList.contains("utilities-minimized") ? "Restore game" : "Minimize to icon"; });
-        action("refresh", () => callLibrary(async () => { const text = await library.getGame(file); document.open(); document.write(library.buildGameDocument(text, file, title)); document.close(); }, "Playing"));
-        action("back", () => { if (host) window.location.href = new URL("index.html", host.location.href).href; else window.history.back(); });
-        action("pin", () => callLibrary(() => library.togglePinned(file), "Pinned"));
-        action("download", () => callLibrary(() => library.download(file), "Downloaded"));
-        action("offline", () => callLibrary(() => library.saveOffline(file), "Offline ready"));
-        const move = toolbar.querySelector('[data-action="move"]');
-        let moving = false;
-        let offsetX = 0;
-        let offsetY = 0;
-        move.addEventListener("pointerdown", (event) => { moving = true; toolbar.setPointerCapture(event.pointerId); const rect = toolbar.getBoundingClientRect(); offsetX = event.clientX - rect.left; offsetY = event.clientY - rect.top; toolbar.style.left = rect.left + "px"; toolbar.style.top = rect.top + "px"; toolbar.style.transform = "none"; });
-        move.addEventListener("pointermove", (event) => { if (moving) { toolbar.style.left = event.clientX - offsetX + "px"; toolbar.style.top = event.clientY - offsetY + "px"; } });
-        move.addEventListener("pointerup", () => { moving = false; });
-      })();
-    <\/script>`;
+    `;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
   }
 
@@ -207,6 +180,66 @@ const GameLibrary = (() => {
     newWindow.document.open();
     newWindow.document.write(buildGameDocument(text, file, title));
     newWindow.document.close();
+    installToolbar(newWindow, file, title);
+  }
+
+  function installToolbar(gameWindow, file, title) {
+    const toolbar = gameWindow.document.getElementById("utilities-toolbar");
+    if (!toolbar) return;
+    const status = toolbar.querySelector("[data-status]");
+    const setStatus = (message) => { status.textContent = message; };
+    const run = async (callback, success) => {
+      try {
+        await callback();
+        setStatus(success);
+      } catch (error) {
+        setStatus(error.message || "Not available");
+      }
+    };
+    const action = (name, callback) => {
+      const button = toolbar.querySelector(`[data-action="${name}"]`);
+      if (button) button.addEventListener("click", callback);
+    };
+    action("close", () => gameWindow.close());
+    action("dock", () => toolbar.classList.toggle("docked"));
+    action("minimize", (event) => {
+      gameWindow.document.body.classList.toggle("utilities-minimized");
+      event.currentTarget.title = gameWindow.document.body.classList.contains("utilities-minimized") ? "Restore game" : "Minimize to icon";
+    });
+    action("refresh", () => run(() => refreshGameWindow(gameWindow, file, title), "Playing"));
+    action("back", () => { gameWindow.location.href = new URL("index.html", window.location.href).href; });
+    action("pin", () => run(() => Promise.resolve(togglePinned(file)), "Pinned"));
+    action("download", () => run(() => download(file), "Downloaded"));
+    action("offline", () => run(() => saveOffline(file), "Offline ready"));
+    const move = toolbar.querySelector('[data-action="move"]');
+    let moving = false;
+    let offsetX = 0;
+    let offsetY = 0;
+    move.addEventListener("pointerdown", (event) => {
+      moving = true;
+      toolbar.setPointerCapture(event.pointerId);
+      const rect = toolbar.getBoundingClientRect();
+      offsetX = event.clientX - rect.left;
+      offsetY = event.clientY - rect.top;
+      toolbar.style.left = `${rect.left}px`;
+      toolbar.style.top = `${rect.top}px`;
+      toolbar.style.transform = "none";
+    });
+    move.addEventListener("pointermove", (event) => {
+      if (moving) {
+        toolbar.style.left = `${event.clientX - offsetX}px`;
+        toolbar.style.top = `${event.clientY - offsetY}px`;
+      }
+    });
+    move.addEventListener("pointerup", () => { moving = false; });
+  }
+
+  async function refreshGameWindow(gameWindow, file, title) {
+    const text = await getGame(file);
+    gameWindow.document.open();
+    gameWindow.document.write(buildGameDocument(text, file, title));
+    gameWindow.document.close();
+    installToolbar(gameWindow, file, title);
   }
 
   async function play(file) {
@@ -252,7 +285,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
 })();
 
 window.GameLibrary = GameLibrary;
