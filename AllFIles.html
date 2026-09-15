@@ -114,6 +114,38 @@
             align-items: center;
         }
 
+        .game-row {
+          display: flex;
+          gap: 8px;
+          width: 100%;
+          max-width: 600px;
+        }
+
+        .game-row input[type="button"] {
+          flex: 1;
+        }
+
+        .game-actions {
+          display: flex;
+          gap: 4px;
+        }
+
+        .game-actions button {
+          border: 0;
+          border-radius: 6px;
+          background: #465f91;
+          color: white;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 8px;
+          white-space: nowrap;
+        }
+
+        .game-actions button:hover {
+          background: #79aadb;
+        }
+
         .empty-message {
             color: rgba(255,255,255,0.6);
             font-style: italic;
@@ -184,6 +216,7 @@
         style="display: inline; color: #79aadb; text-decoration: none; font-size: 18px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);" rel="nofollow">
         https://discord.gg/rmVsAqkpkA
     </a>
+      <a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" target="_blank" style="display: inline; color: #79aadb; text-decoration: none; font-size: 18px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); margin-left: 12px;">Download source code</a>
     <h2 style="color: white; text-align: center; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); font-weight: normal; font-size: 18px;">
         <input type="text" placeholder="Search..." id="searchInput" style="padding: 13px; width: 100%; max-width: 420px; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(7, 105, 218, 0.1);">
         <script src="https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile@main/searchbut.js"></script>
@@ -195,6 +228,7 @@
         </div>
     </div>
     <script src="files.js"></script>
+    <script src="game-storage.js"></script>
     <script>
 function generateAllSections() {
   try {
@@ -273,34 +307,33 @@ function generateAllSections() {
 
     if (filesByChar[char].length > 0) {
       filesByChar[char].forEach((file) => {
+        const row = document.createElement("div");
+        row.className = "game-row";
         const btn = document.createElement("input");
         btn.type = "button";
         btn.value = file;
-        btn.onclick = () => {
-          function normalizeFileName(name) {
-            if (name.includes(".") && name.lastIndexOf(".") > 0) return name;
-            return name + ".html";
-          }
+        btn.onclick = () => runGameAction(() => GameLibrary.play(file));
 
-          const normalized = normalizeFileName(file);
-          const encoded = encodeURIComponent(normalized);
-
-          fetch(
-            `https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/${encoded}?t=${Date.now()}`,
-          )
-            .then((response) => response.text())
-            .then((text) => {
-              const newWin = window.open("about:blank", "_blank");
-              if (newWin) {
-                newWin.document.open();
-                newWin.document.write(text);
-                newWin.document.close();
-              }
-            });
+        const actions = document.createElement("div");
+        actions.className = "game-actions";
+        const actionButton = (label, action) => {
+          const actionBtn = document.createElement("button");
+          actionBtn.type = "button";
+          actionBtn.textContent = label;
+          actionBtn.onclick = action;
+          actions.appendChild(actionBtn);
         };
-        btn.style.width = "100%";
-        btn.style.height = "100%";
-        buttonsContainer.appendChild(btn);
+        actionButton(GameLibrary.isPinned(file) ? "Unpin" : "Pin", () => {
+          GameLibrary.togglePinned(file);
+          window.location.reload();
+        });
+        actionButton("Download", () => runGameAction(() => GameLibrary.download(file)));
+        actionButton("Save offline", () => runGameAction(async () => {
+          await GameLibrary.toggleOffline(file);
+          alert(`${file} is saved for offline play.`);
+        }));
+        row.append(btn, actions);
+        buttonsContainer.appendChild(row);
       });
     } else {
       section.classList.add("empty");
@@ -315,6 +348,13 @@ function generateAllSections() {
   });
 
   generateSidebar(allChars, filesByChar);
+}
+async function runGameAction(action) {
+  try {
+    await action();
+  } catch (error) {
+    alert(error.message);
+  }
 }
 
 function generateSidebar(allChars, filesByChar) {

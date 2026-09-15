@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Utilities Game Library</title>
+	<style>
+		:root { color-scheme: dark; --ink: #f6f2e8; --muted: #b9b4a7; --accent: #f0b35b; --panel: #252b35; --line: #424b58; }
+		* { box-sizing: border-box; }
+		body { margin: 0; min-height: 100vh; color: var(--ink); font: 16px/1.5 Georgia, serif; background: radial-gradient(circle at 20% 0%, #3d4e55, transparent 42%), #171b22; }
+		main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 72px 0; }
+		.eyebrow { color: var(--accent); letter-spacing: .16em; text-transform: uppercase; font: 700 12px/1.2 Arial, sans-serif; }
+		h1 { max-width: 640px; margin: 12px 0 10px; font-size: clamp(42px, 8vw, 78px); line-height: .96; }
+		.intro { max-width: 600px; color: var(--muted); font-size: 19px; }
+		.actions, .game-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+		.actions { margin: 28px 0 64px; }
+		a, button { border: 1px solid var(--line); border-radius: 4px; cursor: pointer; color: var(--ink); font: 700 14px Arial, sans-serif; text-decoration: none; }
+		.actions a, button { padding: 12px 16px; background: var(--panel); }
+		.actions a.primary { border-color: var(--accent); background: var(--accent); color: #201a12; }
+		button:hover, a:hover { border-color: var(--accent); }
+		h2 { margin: 0 0 16px; font-size: 28px; }
+		#pinned-games { display: grid; gap: 12px; }
+		.game { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-top: 1px solid var(--line); }
+		.game strong { display: block; font-size: 19px; }
+		.game small { color: var(--muted); }
+		.game-actions button { padding: 8px 11px; font-size: 12px; }
+		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
+		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
+		@media (max-width: 600px) { main { padding: 42px 0; } .game { align-items: flex-start; flex-direction: column; gap: 12px; } }
+	</style>
+</head>
+<body>
+	<main>
+		<div class="eyebrow">Personal game shelf</div>
+		<h1>Pick up where you left off.</h1>
+		<p class="intro">Pin games from the full library, save them for offline play, or download a copy to keep.</p>
+		<div class="actions">
+			<a class="primary" href="AllFIles.html">Browse all games</a>
+			<a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+		</div>
+		<section aria-labelledby="pinned-heading">
+			<h2 id="pinned-heading">Pinned games</h2>
+			<div id="status" role="status"></div>
+			<div id="pinned-games"></div>
+		</section>
+	</main>
+	<script src="game-storage.js"></script>
+	<script>
+		const pinnedGames = document.getElementById("pinned-games");
+		const status = document.getElementById("status");
+
+		function showStatus(message) {
+			status.textContent = message;
+			window.setTimeout(() => { status.textContent = ""; }, 3000);
+		}
+
+		function renderPinnedGames() {
+			const pinned = GameLibrary.getPinned();
+			pinnedGames.replaceChildren();
+			if (!pinned.length) {
+				pinnedGames.innerHTML = '<div class="empty">No pinned games yet. Browse the library to add one.</div>';
+				return;
+			}
+			pinned.forEach((file) => {
+				const game = document.createElement("article");
+				game.className = "game";
+				game.innerHTML = `<div><strong>${file}</strong><small>Ready in your shelf</small></div><div class="game-actions"><button data-action="play">Play</button><button data-action="download">Download</button><button data-action="offline">Save offline</button><button data-action="unpin">Unpin</button></div>`;
+				game.querySelector('[data-action="play"]').onclick = () => run(() => GameLibrary.play(file));
+				game.querySelector('[data-action="download"]').onclick = () => run(() => GameLibrary.download(file));
+				game.querySelector('[data-action="offline"]').onclick = () => run(async () => { await GameLibrary.toggleOffline(file); showStatus(`${file} saved for offline play.`); });
+				game.querySelector('[data-action="unpin"]').onclick = () => { GameLibrary.togglePinned(file); renderPinnedGames(); };
+				pinnedGames.appendChild(game);
+			});
+		}
+
+		async function run(action) {
+			try { await action(); } catch (error) { showStatus(error.message); }
+		}
+
+		renderPinnedGames();
+	</script>
+</body>
+</html>
