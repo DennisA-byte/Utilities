@@ -148,7 +148,7 @@ const GameLibrary = (() => {
 
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
-    const action = (name) => `onclick="window.opener && window.opener.GameLibrary && window.opener.GameLibrary.toolbarAction(window, ${JSON.stringify(file)}, '${name}')"`;
+    const action = (name) => `onclick='window.opener && window.opener.GameLibrary && window.opener.GameLibrary.toolbarAction(window, ${JSON.stringify(file)}, ${JSON.stringify(name)})'`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
