@@ -136,14 +136,21 @@
           background: #465f91;
           color: white;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 18px;
           font-weight: 700;
-          padding: 8px;
-          white-space: nowrap;
+          height: 36px;
+          padding: 4px 9px;
+          width: 36px;
         }
 
         .game-actions button:hover {
           background: #79aadb;
+        }
+
+        #action-status {
+          color: #f5d58d;
+          min-height: 24px;
+          text-align: center;
         }
 
         .empty-message {
@@ -209,13 +216,6 @@
         Ultimate Game Stash Google Doc
     </a>
     </h2>
-    <h2 style="color: white; text-align: center; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); font-weight: normal; font-size: 18px;">
-    Discord Server:
-    <a href="https://discord.gg/rmVsAqkpkA" 
-        target="_blank" 
-        style="display: inline; color: #79aadb; text-decoration: none; font-size: 18px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);" rel="nofollow">
-        https://discord.gg/rmVsAqkpkA
-    </a>
       <a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" target="_blank" style="display: inline; color: #79aadb; text-decoration: none; font-size: 18px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); margin-left: 12px;">Download source code</a>
     <h2 style="color: white; text-align: center; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); font-weight: normal; font-size: 18px;">
         <input type="text" placeholder="Search..." id="searchInput" style="padding: 13px; width: 100%; max-width: 420px; border-radius: 8px; border: none; box-shadow: 0 2px 4px rgba(7, 105, 218, 0.1);">
@@ -226,6 +226,7 @@
         
         <div id="sections-container">  
         </div>
+        <div id="action-status" role="status" aria-live="polite"></div>
     </div>
     <script src="files.js"></script>
     <script src="game-storage.js"></script>
@@ -316,21 +317,24 @@ function generateAllSections() {
 
         const actions = document.createElement("div");
         actions.className = "game-actions";
-        const actionButton = (label, action) => {
+        const actionButton = (label, icon, action) => {
           const actionBtn = document.createElement("button");
           actionBtn.type = "button";
-          actionBtn.textContent = label;
+          actionBtn.innerHTML = icon;
+          actionBtn.setAttribute("aria-label", label);
+          actionBtn.title = label;
           actionBtn.onclick = action;
           actions.appendChild(actionBtn);
         };
-        actionButton(GameLibrary.isPinned(file) ? "Unpin" : "Pin", () => {
+        const pinLabel = GameLibrary.isPinned(file) ? "Unpin" : "Pin";
+        actionButton(pinLabel, GameLibrary.isPinned(file) ? "★" : "☆", () => {
           GameLibrary.togglePinned(file);
           window.location.reload();
         });
-        actionButton("Download", () => runGameAction(() => GameLibrary.download(file)));
-        actionButton("Save offline", () => runGameAction(async () => {
+        actionButton("Download", "⇩", () => runGameAction(() => GameLibrary.download(file)));
+        actionButton("Save offline", "▣", () => runGameAction(async () => {
           await GameLibrary.toggleOffline(file);
-          alert(`${file} is saved for offline play.`);
+          showActionStatus(`${file} is saved for offline play.`);
         }));
         row.append(btn, actions);
         buttonsContainer.appendChild(row);
@@ -353,8 +357,12 @@ async function runGameAction(action) {
   try {
     await action();
   } catch (error) {
-    alert(error.message);
+    showActionStatus(error.message);
   }
+}
+
+function showActionStatus(message) {
+  document.getElementById("action-status").textContent = message;
 }
 
 function generateSidebar(allChars, filesByChar) {

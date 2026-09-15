@@ -23,7 +23,7 @@
 		.game { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-top: 1px solid var(--line); }
 		.game strong { display: block; font-size: 19px; }
 		.game small { color: var(--muted); }
-		.game-actions button { padding: 8px 11px; font-size: 12px; }
+		.game-actions button { width: 36px; height: 36px; padding: 4px 9px; font-size: 18px; }
 		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
 		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
 		@media (max-width: 600px) { main { padding: 42px 0; } .game { align-items: flex-start; flex-direction: column; gap: 12px; } }
@@ -64,7 +64,7 @@
 			pinned.forEach((file) => {
 				const game = document.createElement("article");
 				game.className = "game";
-				game.innerHTML = `<div><strong>${file}</strong><small>Ready in your shelf</small></div><div class="game-actions"><button data-action="play">Play</button><button data-action="download">Download</button><button data-action="offline">Save offline</button><button data-action="unpin">Unpin</button></div>`;
+				game.innerHTML = `<div><strong>${file}</strong><small>Ready in your shelf</small></div><div class="game-actions"><button data-action="play">Play</button><button data-action="download" aria-label="Download ${file}" title="Download">⇩</button><button data-action="offline" aria-label="Save ${file} offline" title="Save offline">▣</button><button data-action="unpin" aria-label="Unpin ${file}" title="Unpin">★</button></div>`;
 				game.querySelector('[data-action="play"]').onclick = () => run(() => GameLibrary.play(file));
 				game.querySelector('[data-action="download"]').onclick = () => run(() => GameLibrary.download(file));
 				game.querySelector('[data-action="offline"]').onclick = () => run(async () => { await GameLibrary.toggleOffline(file); showStatus(`${file} saved for offline play.`); });
