@@ -100,6 +100,10 @@ const GameLibrary = (() => {
     localStorage.setItem(recentKey, JSON.stringify([file, ...recent].slice(0, 20)));
   }
 
+  function connectionLabel() {
+    return navigator.onLine ? "Online" : "Offline";
+  }
+
   async function getStatus(file, available = true) {
     const saved = await getSavedRecord(file);
     const statuses = [];
@@ -151,6 +155,7 @@ const GameLibrary = (() => {
       #utilities-toolbar svg{height:18px;width:18px}
       #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status{color:#f0b35b;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #utilities-toolbar .utilities-connection{color:#b9b4a7;font-size:11px;margin-left:4px}
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
       #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
       body.utilities-minimized>*:not(#utilities-toolbar){display:none!important}
@@ -165,6 +170,7 @@ const GameLibrary = (() => {
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
       <span class="utilities-toolbar-status" data-status>Playing</span>
+      <span class="utilities-connection" data-connection>${connectionLabel()}</span>
       <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
       <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
@@ -181,12 +187,19 @@ const GameLibrary = (() => {
     newWindow.document.write(buildGameDocument(text, file, title));
     newWindow.document.close();
     installToolbar(newWindow, file, title);
+    newWindow.setTimeout(() => installToolbar(newWindow, file, title), 0);
   }
 
   function installToolbar(gameWindow, file, title) {
     const toolbar = gameWindow.document.getElementById("utilities-toolbar");
     if (!toolbar) return;
+    if (toolbar.dataset.bound === "true") return;
+    toolbar.dataset.bound = "true";
     const status = toolbar.querySelector("[data-status]");
+    const connection = toolbar.querySelector("[data-connection]");
+    const updateConnection = () => { connection.textContent = connectionLabel(); };
+    window.addEventListener("online", updateConnection);
+    window.addEventListener("offline", updateConnection);
     const setStatus = (message) => { status.textContent = message; };
     const run = async (callback, success) => {
       try {
@@ -240,6 +253,7 @@ const GameLibrary = (() => {
     gameWindow.document.write(buildGameDocument(text, file, title));
     gameWindow.document.close();
     installToolbar(gameWindow, file, title);
+    gameWindow.setTimeout(() => installToolbar(gameWindow, file, title), 0);
   }
 
   async function play(file) {
@@ -285,7 +299,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, connectionLabel, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
 })();
 
 window.GameLibrary = GameLibrary;

@@ -38,6 +38,7 @@
 		.game-actions .play-button { width: auto; height: auto; padding: 8px 12px; font-size: 12px; }
 		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
 		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
+		.connection-status { color: var(--muted); font: 700 12px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 		@media (max-width: 600px) { main { padding: 42px 0; } .game { align-items: flex-start; flex-direction: column; gap: 12px; } }
 	</style>
 </head>
@@ -50,6 +51,7 @@
 			<a class="primary" href="AllFIles.html">Browse all games</a>
 			<label class="upload-button"><span class="actions a">Upload HTML game</span><input id="upload-game" type="file" accept=".html,text/html"></label>
 			<a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+			<span class="connection-status" id="connection-status">Online</span>
 		</div>
 		<section aria-labelledby="pinned-heading">
 			<h2 id="pinned-heading">Your games</h2>
@@ -73,6 +75,14 @@
 			status.textContent = message;
 			window.setTimeout(() => { status.textContent = ""; }, 3000);
 		}
+
+		function updateConnectionStatus() {
+			document.getElementById("connection-status").textContent = navigator.onLine ? "Online" : "Offline";
+		}
+
+		window.addEventListener("online", updateConnectionStatus);
+		window.addEventListener("offline", updateConnectionStatus);
+		updateConnectionStatus();
 
 		function makeGameCard(gameInfo) {
 				const card = document.createElement("article");

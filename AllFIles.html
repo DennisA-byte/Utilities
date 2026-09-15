@@ -313,6 +313,7 @@
             .page-subtitle { color: var(--muted); margin: 0 0 8px; }
             .page-subtitle a { color: var(--accent); }
             .page-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 42px; }
+            .connection-status { color: var(--muted); font: 700 12px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
             #searchInput {
               background: var(--panel) !important;
               border: 1px solid var(--line) !important;
@@ -350,6 +351,7 @@
         <div class="page-tools">
           <input type="text" placeholder="Search..." id="searchInput">
           <a class="source-link" href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" target="_blank">Download source</a>
+          <span class="connection-status" id="connection-status">Online</span>
         </div>
       <div>
         <script src="https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile@main/searchbut.js"></script>
@@ -447,11 +449,10 @@ async function generateAllSections() {
         const btn = document.createElement("input");
         btn.type = "button";
         btn.value = file;
-        btn.onclick = () => runGameAction(() => GameLibrary.play(file), gameStatus);
-
         const gameStatus = document.createElement("span");
         gameStatus.className = "game-status";
         gameStatus.textContent = ["Available", ...(savedFiles.has(file) ? ["Offline ready"] : []), ...(GameLibrary.isPinned(file) ? ["Pinned"] : [])].join(" · ");
+        btn.onclick = () => runGameAction(() => GameLibrary.play(file), gameStatus);
 
         const actions = document.createElement("details");
         actions.className = "game-actions game-menu";
@@ -460,6 +461,10 @@ async function generateAllSections() {
         const menu = document.createElement("div");
         menu.className = "menu-content";
         actions.append(summary, menu);
+        summary.addEventListener("click", (event) => {
+          event.preventDefault();
+          actions.open = !actions.open;
+        });
         const actionButton = (label, icon, action) => {
           const actionBtn = document.createElement("button");
           actionBtn.type = "button";
