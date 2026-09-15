@@ -168,7 +168,7 @@ const GameLibrary = (() => {
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
       #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
       #utilities-toolbar.minimized{background:#252b35aa;opacity:.72;padding:4px;width:42px}
-      #utilities-toolbar.minimized>*:not([data-action="minimize"]){display:none}
+      #utilities-toolbar.minimized>*:not([data-action="minimize"]):not([data-action="move"]){display:none}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
       <span class="utilities-drag-region" data-action="move" aria-label="Move toolbar" title="Drag toolbar"></span>
