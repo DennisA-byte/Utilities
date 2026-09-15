@@ -156,6 +156,12 @@ const GameLibrary = (() => {
       #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status{color:#f0b35b;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-connection{color:#b9b4a7;font-size:11px;margin-left:4px}
+      #utilities-toolbar .utilities-saves{position:relative}
+      #utilities-toolbar .utilities-saves summary{cursor:pointer;list-style:none;padding:7px 9px}
+      #utilities-toolbar .utilities-saves summary::-webkit-details-marker{display:none}
+      #utilities-toolbar .utilities-saves summary:after{content:" ▾"}
+      #utilities-toolbar .utilities-save-menu{background:#252b35;border:1px solid #424b58;border-radius:4px;display:grid;gap:4px;padding:5px;position:absolute;right:0;top:100%;z-index:2}
+      #utilities-toolbar .utilities-save-menu button{font:12px Arial,sans-serif;height:auto;padding:8px 10px;white-space:nowrap;width:auto}
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
       #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
       body.utilities-minimized>*:not(#utilities-toolbar){display:none!important}
@@ -175,6 +181,7 @@ const GameLibrary = (() => {
       <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
       <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
+      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-save-action="export">Export saves</button><button data-save-action="import">Import saves</button><button data-save-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
     `;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
@@ -209,21 +216,35 @@ const GameLibrary = (() => {
         setStatus(error.message || "Not available");
       }
     };
-    const action = (name, callback) => {
-      const button = toolbar.querySelector(`[data-action="${name}"]`);
-      if (button) button.addEventListener("click", callback);
-    };
-    action("close", () => gameWindow.close());
-    action("dock", () => toolbar.classList.toggle("docked"));
-    action("minimize", (event) => {
-      gameWindow.document.body.classList.toggle("utilities-minimized");
-      event.currentTarget.title = gameWindow.document.body.classList.contains("utilities-minimized") ? "Restore game" : "Minimize to icon";
+    toolbar.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button || !toolbar.contains(button)) return;
+      const actionName = button.dataset.action;
+      const actions = {
+        close: () => gameWindow.close(),
+        dock: () => toolbar.classList.toggle("docked"),
+        minimize: () => gameWindow.document.body.classList.toggle("utilities-minimized"),
+        refresh: () => run(() => refreshGameWindow(gameWindow, file, title), "Playing"),
+        back: () => { gameWindow.location.href = new URL("index.html", window.location.href).href; },
+        pin: () => run(() => Promise.resolve(togglePinned(file)), "Pinned"),
+        download: () => run(() => download(file), "Downloaded"),
+        offline: () => run(() => saveOffline(file), "Offline ready"),
+      };
+      if (actions[actionName]) actions[actionName]();
     });
-    action("refresh", () => run(() => refreshGameWindow(gameWindow, file, title), "Playing"));
-    action("back", () => { gameWindow.location.href = new URL("index.html", window.location.href).href; });
-    action("pin", () => run(() => Promise.resolve(togglePinned(file)), "Pinned"));
-    action("download", () => run(() => download(file), "Downloaded"));
-    action("offline", () => run(() => saveOffline(file), "Offline ready"));
+    toolbar.querySelector('[data-save-action="export"]').addEventListener("click", () => run(() => exportData(), "Saves exported"));
+    const importButton = toolbar.querySelector('[data-save-action="import"]');
+    const importFile = toolbar.querySelector("[data-save-file]");
+    importButton.addEventListener("click", () => importFile.click());
+    importFile.addEventListener("change", () => run(async () => {
+      if (!importFile.files[0] || !gameWindow.confirm("Importing saves will replace current game data. Continue?")) return;
+      await importData(importFile.files[0]);
+      setStatus("Saves imported");
+      importFile.value = "";
+    }, "Saves imported"));
+    toolbar.querySelector('[data-save-action="clear"]').addEventListener("click", () => run(async () => {
+      if (gameWindow.confirm("Clear all saved games, pins, history, and cookies?")) await clearData();
+    }, "Saves cleared"));
     const move = toolbar.querySelector('[data-action="move"]');
     let moving = false;
     let offsetX = 0;
@@ -287,6 +308,54 @@ const GameLibrary = (() => {
     return getSavedRecord(file);
   }
 
+  async function exportData() {
+    const database = await getSavedGames();
+    const local = {};
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      local[key] = localStorage.getItem(key);
+    }
+    const cookies = document.cookie.split("; ").filter(Boolean);
+    const payload = { version: 1, exportedAt: new Date().toISOString(), localStorage: local, cookies, indexedDB: database };
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    link.download = `utilities-save-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  async function importData(file) {
+    const payload = JSON.parse(await file.text());
+    if (!payload || typeof payload !== "object" || !payload.localStorage || !Array.isArray(payload.indexedDB)) {
+      throw new Error("That is not a valid Utilities save file.");
+    }
+    localStorage.clear();
+    Object.entries(payload.localStorage).forEach(([key, value]) => localStorage.setItem(key, value));
+    const database = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+      store.clear();
+      payload.indexedDB.forEach((record) => store.put(record));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  async function clearData() {
+    localStorage.clear();
+    const database = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(storeName, "readwrite");
+      transaction.objectStore(storeName).clear();
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    document.cookie.split("; ").filter(Boolean).forEach((cookie) => {
+      document.cookie = `${cookie.split("=")[0]}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    });
+  }
+
   async function importGame(file) {
     if (!file || !file.name.toLowerCase().endsWith(".html")) {
       throw new Error("Choose an HTML file.");
@@ -299,7 +368,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, connectionLabel, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, clearData, connectionLabel, download, exportData, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
 })();
 
 window.GameLibrary = GameLibrary;

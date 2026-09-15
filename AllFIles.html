@@ -458,6 +458,8 @@ async function generateAllSections() {
         actions.className = "game-actions game-menu";
         const summary = document.createElement("summary");
         summary.textContent = "Actions";
+        summary.setAttribute("role", "button");
+        summary.setAttribute("aria-label", `Actions for ${file}`);
         const menu = document.createElement("div");
         menu.className = "menu-content";
         actions.append(summary, menu);
@@ -465,11 +467,16 @@ async function generateAllSections() {
           event.preventDefault();
           actions.open = !actions.open;
         });
+        actions.addEventListener("click", (event) => event.stopPropagation());
         const actionButton = (label, icon, action) => {
           const actionBtn = document.createElement("button");
           actionBtn.type = "button";
           actionBtn.textContent = label;
-          actionBtn.onclick = action;
+          actionBtn.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            action();
+          });
           menu.appendChild(actionBtn);
         };
         const pinLabel = GameLibrary.isPinned(file) ? "Unpin" : "Pin";
