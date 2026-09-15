@@ -148,6 +148,7 @@ const GameLibrary = (() => {
 
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
+    const action = (name) => `onclick="window.opener && window.opener.GameLibrary && window.opener.GameLibrary.toolbarAction(window, ${JSON.stringify(file)}, '${name}')"`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
@@ -168,20 +169,20 @@ const GameLibrary = (() => {
       body.utilities-minimized #utilities-toolbar>*:not([data-action="minimize"]){display:none}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
-      <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
-      <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
-      <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
+      <button data-action="close" ${action("close")} aria-label="Close game" title="Close game">${icon("close")}</button>
+      <button data-action="dock" ${action("dock")} aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
+      <button data-action="minimize" ${action("minimize")} aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
       <button data-action="move" aria-label="Move toolbar" title="Move toolbar">${icon("move")}</button>
-      <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
+      <button data-action="refresh" ${action("refresh")} aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
       <span class="utilities-toolbar-status" data-status>Playing</span>
       <span class="utilities-connection" data-connection>${connectionLabel()}</span>
-      <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
-      <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
-      <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
-      <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
-      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-save-action="export">Export saves</button><button data-save-action="import">Import saves</button><button data-save-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
+      <button data-action="back" ${action("back")} aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
+      <button data-action="pin" ${action("pin")} aria-label="Pin game" title="Pin game">${icon("pin")}</button>
+      <button data-action="download" ${action("download")} aria-label="Download game" title="Download game">${icon("download")}</button>
+      <button data-action="offline" ${action("offline")} aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
+      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button ${action("export")}>Export saves</button><button ${action("import")}>Import saves</button><button ${action("clear")}>Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
     `;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
@@ -216,35 +217,6 @@ const GameLibrary = (() => {
         setStatus(error.message || "Not available");
       }
     };
-    toolbar.addEventListener("click", (event) => {
-      const button = event.target.closest("button");
-      if (!button || !toolbar.contains(button)) return;
-      const actionName = button.dataset.action;
-      const actions = {
-        close: () => gameWindow.close(),
-        dock: () => toolbar.classList.toggle("docked"),
-        minimize: () => gameWindow.document.body.classList.toggle("utilities-minimized"),
-        refresh: () => run(() => refreshGameWindow(gameWindow, file, title), "Playing"),
-        back: () => { gameWindow.location.href = new URL("index.html", window.location.href).href; },
-        pin: () => run(() => Promise.resolve(togglePinned(file)), "Pinned"),
-        download: () => run(() => download(file), "Downloaded"),
-        offline: () => run(() => saveOffline(file), "Offline ready"),
-      };
-      if (actions[actionName]) actions[actionName]();
-    });
-    toolbar.querySelector('[data-save-action="export"]').addEventListener("click", () => run(() => exportData(), "Saves exported"));
-    const importButton = toolbar.querySelector('[data-save-action="import"]');
-    const importFile = toolbar.querySelector("[data-save-file]");
-    importButton.addEventListener("click", () => importFile.click());
-    importFile.addEventListener("change", () => run(async () => {
-      if (!importFile.files[0] || !gameWindow.confirm("Importing saves will replace current game data. Continue?")) return;
-      await importData(importFile.files[0]);
-      setStatus("Saves imported");
-      importFile.value = "";
-    }, "Saves imported"));
-    toolbar.querySelector('[data-save-action="clear"]').addEventListener("click", () => run(async () => {
-      if (gameWindow.confirm("Clear all saved games, pins, history, and cookies?")) await clearData();
-    }, "Saves cleared"));
     const move = toolbar.querySelector('[data-action="move"]');
     let moving = false;
     let offsetX = 0;
@@ -266,6 +238,38 @@ const GameLibrary = (() => {
       }
     });
     move.addEventListener("pointerup", () => { moving = false; });
+  }
+
+  async function toolbarAction(gameWindow, file, name) {
+    const toolbar = gameWindow.document.getElementById("utilities-toolbar");
+    const status = toolbar?.querySelector("[data-status]");
+    const setStatus = (message) => { if (status) status.textContent = message; };
+    try {
+      if (name === "close") return gameWindow.close();
+      if (name === "dock") return toolbar.classList.toggle("docked");
+      if (name === "minimize") return gameWindow.document.body.classList.toggle("utilities-minimized");
+      if (name === "refresh") return refreshGameWindow(gameWindow, file, toolbar.querySelector(".utilities-toolbar-title").textContent);
+      if (name === "back") return gameWindow.location.href = new URL("index.html", window.location.href).href;
+      if (name === "pin") { togglePinned(file); setStatus("Pinned"); return; }
+      if (name === "download") { await download(file); setStatus("Downloaded"); return; }
+      if (name === "offline") { await saveOffline(file); setStatus("Offline ready"); return; }
+      if (name === "export") { await exportData(); setStatus("Saves exported"); return; }
+      if (name === "import") {
+        const input = toolbar.querySelector("[data-save-file]");
+        input.click();
+        input.onchange = async () => {
+          if (input.files[0] && gameWindow.confirm("Importing saves will replace current game data. Continue?")) {
+            await importData(input.files[0]);
+            setStatus("Saves imported");
+          }
+          input.value = "";
+        };
+        return;
+      }
+      if (name === "clear" && gameWindow.confirm("Clear all saved games, pins, history, and cookies?")) { await clearData(); setStatus("Saves cleared"); }
+    } catch (error) {
+      setStatus(error.message || "Action failed");
+    }
   }
 
   async function refreshGameWindow(gameWindow, file, title) {
@@ -368,7 +372,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, clearData, connectionLabel, download, exportData, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, clearData, connectionLabel, download, exportData, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
 })();
 
 window.GameLibrary = GameLibrary;

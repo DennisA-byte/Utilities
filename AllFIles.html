@@ -133,6 +133,7 @@
         .game-actions {
           display: flex;
           gap: 4px;
+          position: relative;
         }
 
         .game-actions button {
@@ -140,7 +141,7 @@
           background: #465f91;
           color: white;
         }
-        .game-menu summary {
+        .game-menu .menu-toggle {
           border: 1px solid var(--line);
           border-radius: 4px;
           cursor: pointer;
@@ -154,14 +155,13 @@
           min-height: 24px;
           text-align: center;
         }
-        .game-menu summary::-webkit-details-marker { display: none; }
-        .game-menu summary::after { content: " ▾"; color: var(--accent); }
-        .game-menu[open] summary, .game-menu summary:hover { border-color: var(--accent); }
+        .game-menu .menu-toggle::after { content: " ▾"; color: var(--accent); }
+        .game-menu.open .menu-toggle, .game-menu .menu-toggle:hover { border-color: var(--accent); }
         .menu-content {
           background: var(--panel);
           border: 1px solid var(--line);
           border-radius: 4px;
-          display: grid;
+          display: none;
           gap: 4px;
           padding: 6px;
           position: absolute;
@@ -169,6 +169,7 @@
           top: calc(100% + 5px);
           z-index: 5;
         }
+        .game-menu.open .menu-content { display: grid; }
         .menu-content button {
           background: transparent;
           border: 0;
@@ -454,18 +455,19 @@ async function generateAllSections() {
         gameStatus.textContent = ["Available", ...(savedFiles.has(file) ? ["Offline ready"] : []), ...(GameLibrary.isPinned(file) ? ["Pinned"] : [])].join(" · ");
         btn.onclick = () => runGameAction(() => GameLibrary.play(file), gameStatus);
 
-        const actions = document.createElement("details");
+        const actions = document.createElement("div");
         actions.className = "game-actions game-menu";
         const summary = document.createElement("summary");
         summary.textContent = "Actions";
         summary.setAttribute("role", "button");
         summary.setAttribute("aria-label", `Actions for ${file}`);
+        summary.className = "menu-toggle";
         const menu = document.createElement("div");
         menu.className = "menu-content";
         actions.append(summary, menu);
         summary.addEventListener("click", (event) => {
           event.preventDefault();
-          actions.open = !actions.open;
+          actions.classList.toggle("open");
         });
         actions.addEventListener("click", (event) => event.stopPropagation());
         const actionButton = (label, icon, action) => {
