@@ -182,7 +182,7 @@ const GameLibrary = (() => {
       <button data-action="pin" ${action("pin")} aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" ${action("download")} aria-label="Download game" title="Download game">${icon("download")}</button>
       <button data-action="offline" ${action("offline")} aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
-      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button ${action("export")}>Export saves</button><button ${action("import")}>Import saves</button><button ${action("clear")}>Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
+      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-action="export" ${action("export")}>Export saves</button><button data-action="import" ${action("import")}>Import saves</button><button data-action="clear" ${action("clear")}>Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
     `;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
@@ -196,6 +196,7 @@ const GameLibrary = (() => {
     newWindow.document.close();
     installToolbar(newWindow, file, title);
     newWindow.setTimeout(() => installToolbar(newWindow, file, title), 0);
+    newWindow.addEventListener("load", () => installToolbar(newWindow, file, title));
   }
 
   function installToolbar(gameWindow, file, title) {
@@ -209,6 +210,14 @@ const GameLibrary = (() => {
     window.addEventListener("online", updateConnection);
     window.addEventListener("offline", updateConnection);
     const setStatus = (message) => { status.textContent = message; };
+    gameWindow.document.addEventListener("click", (event) => {
+      const button = event.target.closest("#utilities-toolbar button");
+      if (!button) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const actionName = button.dataset.action || button.dataset.saveAction;
+      toolbarAction(gameWindow, file, actionName);
+    }, true);
     const run = async (callback, success) => {
       try {
         await callback();
