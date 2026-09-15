@@ -148,7 +148,7 @@ const GameLibrary = (() => {
 
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
-    const action = (name) => `onclick='window.opener && window.opener.GameLibrary && window.opener.GameLibrary.toolbarAction(window, ${JSON.stringify(file)}, ${JSON.stringify(name)})'`;
+    const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(button&&button.dataset.action!=="move"&&window.opener){event.preventDefault();window.opener.postMessage({type:"utilities-toolbar-action",action:button.dataset.action},"*");}});var moving=false,x=0,y=0;move.addEventListener("pointerdown",function(event){moving=true;toolbar.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}});move.addEventListener("pointerup",function(){moving=false;});})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
@@ -169,22 +169,22 @@ const GameLibrary = (() => {
       body.utilities-minimized #utilities-toolbar>*:not([data-action="minimize"]){display:none}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
-      <button data-action="close" ${action("close")} aria-label="Close game" title="Close game">${icon("close")}</button>
-      <button data-action="dock" ${action("dock")} aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
-      <button data-action="minimize" ${action("minimize")} aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
+      <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
+      <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
+      <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
       <button data-action="move" aria-label="Move toolbar" title="Move toolbar">${icon("move")}</button>
-      <button data-action="refresh" ${action("refresh")} aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
+      <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
       <span class="utilities-toolbar-status" data-status>Playing</span>
       <span class="utilities-connection" data-connection>${connectionLabel()}</span>
-      <button data-action="back" ${action("back")} aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
-      <button data-action="pin" ${action("pin")} aria-label="Pin game" title="Pin game">${icon("pin")}</button>
-      <button data-action="download" ${action("download")} aria-label="Download game" title="Download game">${icon("download")}</button>
-      <button data-action="offline" ${action("offline")} aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
-      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-action="export" ${action("export")}>Export saves</button><button data-action="import" ${action("import")}>Import saves</button><button data-action="clear" ${action("clear")}>Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
+      <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
+      <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
+      <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
+      <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
+      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-action="export">Export saves</button><button data-action="import">Import saves</button><button data-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
-    `;
+    ${actionScript}`;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
   }
 
@@ -210,14 +210,12 @@ const GameLibrary = (() => {
     window.addEventListener("online", updateConnection);
     window.addEventListener("offline", updateConnection);
     const setStatus = (message) => { status.textContent = message; };
-    gameWindow.document.addEventListener("click", (event) => {
-      const button = event.target.closest("#utilities-toolbar button");
-      if (!button) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const actionName = button.dataset.action || button.dataset.saveAction;
-      toolbarAction(gameWindow, file, actionName);
-    }, true);
+    if (!gameWindow.__utilitiesMessageBound) {
+      gameWindow.__utilitiesMessageBound = true;
+      window.addEventListener("message", (event) => {
+        if (event.source === gameWindow && event.data?.type === "utilities-toolbar-action") toolbarAction(gameWindow, file, event.data.action);
+      });
+    }
     const run = async (callback, success) => {
       try {
         await callback();
