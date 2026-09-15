@@ -148,7 +148,7 @@ const GameLibrary = (() => {
 
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
-    const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(button&&button.dataset.action!=="move"&&window.opener){event.preventDefault();window.opener.postMessage({type:"utilities-toolbar-action",action:button.dataset.action},"*");}});var moving=false,x=0,y=0;move.addEventListener("pointerdown",function(event){moving=true;toolbar.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}});move.addEventListener("pointerup",function(){moving=false;});})();<\/script>`;
+    const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(button&&window.opener){event.preventDefault();window.opener.postMessage({type:"utilities-toolbar-action",action:button.dataset.action},"*");}});var moving=false,x=0,y=0;function stopMoving(){moving=false;}move.addEventListener("pointerdown",function(event){moving=true;move.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";event.preventDefault();});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}});move.addEventListener("pointerup",stopMoving);move.addEventListener("pointercancel",stopMoving);move.addEventListener("lostpointercapture",stopMoving);window.addEventListener("pointerup",stopMoving);window.addEventListener("blur",stopMoving);})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
@@ -171,10 +171,10 @@ const GameLibrary = (() => {
       #utilities-toolbar.minimized>*:not([data-action="minimize"]){display:none}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
+      <span class="utilities-drag-region" data-action="move" aria-label="Move toolbar" title="Drag toolbar"></span>
       <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
       <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
       <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
-      <span class="utilities-drag-region" data-action="move" aria-label="Move toolbar" title="Drag toolbar"></span>
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
