@@ -108,18 +108,98 @@ const GameLibrary = (() => {
     return response.text();
   }
 
-  function openText(text) {
+  function icon(name) {
+    const paths = {
+      back: '<path d="m15 18-6-6 6-6"/><path d="M9 12h10"/>',
+      close: '<path d="m6 6 12 12M18 6 6 18"/>',
+      dock: '<path d="M4 5h16v14H4z"/><path d="M4 15h16"/>',
+      download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+      minimize: '<path d="M5 12h14"/>',
+      move: '<path d="M12 3v18M3 12h18"/><path d="m8 7 4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
+      offline: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+      pin: '<path d="m15 4 5 5-3 3v5l-5-3-5 3v-5L4 9l5-5z"/>',
+      refresh: '<path d="M20 11a8 8 0 0 0-14.7-4L3 10"/><path d="M3 5v5h5M4 13a8 8 0 0 0 14.7 4L21 14"/><path d="M21 19v-5h-5"/>',
+    };
+    return `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[character]));
+  }
+
+  function buildGameDocument(text, file, title) {
+    const safeTitle = escapeHtml(title);
+    const toolbar = `<style>
+      #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
+      #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
+      #utilities-toolbar button:hover{background:#f0b35b;color:#201a12}
+      #utilities-toolbar svg{height:18px;width:18px}
+      #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
+      #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
+      #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
+      body.utilities-minimized>*:not(#utilities-toolbar){display:none!important}
+      body.utilities-minimized #utilities-toolbar>*:not([data-action="minimize"]){display:none}
+    </style>
+    <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
+      <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
+      <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
+      <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
+      <button data-action="move" aria-label="Move toolbar" title="Move toolbar">${icon("move")}</button>
+      <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
+      <span class="utilities-toolbar-divider"></span>
+      <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
+      <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
+      <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
+      <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
+      <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
+    </div>
+    <script>
+      (() => {
+        const toolbar = document.getElementById("utilities-toolbar");
+        const host = window.opener;
+        const library = host && host.GameLibrary;
+        const file = ${JSON.stringify(file)};
+        const title = ${JSON.stringify(title)};
+        const action = (name, callback) => toolbar.querySelector("[data-action=\"" + name + "\"]").addEventListener("click", callback);
+        action("close", () => window.close());
+        action("dock", () => toolbar.classList.toggle("docked"));
+        action("minimize", (event) => { document.body.classList.toggle("utilities-minimized"); event.currentTarget.title = document.body.classList.contains("utilities-minimized") ? "Restore game" : "Minimize to icon"; });
+        action("refresh", async () => { const text = await library.getGame(file); document.open(); document.write(library.buildGameDocument(text, file, title)); document.close(); });
+        action("back", () => { window.location.href = new URL("index.html", host.location.href).href; });
+        action("pin", () => { library.togglePinned(file); });
+        action("download", () => { library.download(file); });
+        action("offline", async () => { await library.saveOffline(file); });
+        const move = toolbar.querySelector('[data-action="move"]');
+        let moving = false;
+        let offsetX = 0;
+        let offsetY = 0;
+        move.addEventListener("pointerdown", (event) => { moving = true; toolbar.setPointerCapture(event.pointerId); const rect = toolbar.getBoundingClientRect(); offsetX = event.clientX - rect.left; offsetY = event.clientY - rect.top; toolbar.style.left = rect.left + "px"; toolbar.style.top = rect.top + "px"; toolbar.style.transform = "none"; });
+        move.addEventListener("pointermove", (event) => { if (moving) { toolbar.style.left = event.clientX - offsetX + "px"; toolbar.style.top = event.clientY - offsetY + "px"; } });
+        move.addEventListener("pointerup", () => { moving = false; });
+      })();
+    <\/script>`;
+    return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
+  }
+
+  function openText(text, file, title) {
     const newWindow = window.open("about:blank", "_blank");
     if (!newWindow) throw new Error("Allow pop-ups to open the game.");
     newWindow.document.open();
-    newWindow.document.write(text);
+    newWindow.document.write(buildGameDocument(text, file, title));
     newWindow.document.close();
   }
 
   async function play(file) {
     const text = await getGame(file);
+    const record = await getSavedRecord(file);
     recordRecent(file);
-    openText(text);
+    openText(text, file, record?.title || file);
   }
 
   async function download(file) {
@@ -158,5 +238,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { download, getGame, getPinned, getRecent, getSavedGames, importGame, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, icon, importGame, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
 })();
+
+window.GameLibrary = GameLibrary;

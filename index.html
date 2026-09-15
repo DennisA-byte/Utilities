@@ -15,11 +15,11 @@
 		.actions, .game-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 		.actions { margin: 28px 0 64px; }
 		.upload-button { display: inline-block; }
-		.upload-button span { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; display: inline-block; font: 700 14px Arial, sans-serif; padding: 12px 16px; }
+		.upload-button span { align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; display: inline-flex; font: 700 14px Arial, sans-serif; height: 42px; padding: 0 16px; }
 		.upload-button span:hover { border-color: var(--accent); }
 		.upload-button input { display: none; }
 		a, button { border: 1px solid var(--line); border-radius: 4px; cursor: pointer; color: var(--ink); font: 700 14px Arial, sans-serif; text-decoration: none; }
-		.actions a, button { padding: 12px 16px; background: var(--panel); }
+		.actions > a { align-items: center; display: inline-flex; height: 42px; padding: 0 16px; }
 		.actions a.primary { border-color: var(--accent); background: var(--accent); color: #201a12; }
 		button:hover, a:hover { border-color: var(--accent); }
 		h2 { margin: 0 0 16px; font-size: 28px; }
@@ -33,6 +33,7 @@
 		.game strong { display: block; font-size: 19px; }
 		.game small { color: var(--muted); }
 		.game-actions button { width: 36px; height: 36px; padding: 4px 9px; font-size: 18px; }
+		.game-actions button svg { height: 18px; width: 18px; }
 		.game-actions .play-button { width: auto; height: auto; padding: 8px 12px; font-size: 12px; }
 		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
 		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
@@ -56,7 +57,6 @@
 				<button class="tab" role="tab" aria-selected="true" data-tab="pinned">Pinned</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="recent">Recently played</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="offline">Offline</button>
-				<button class="tab" role="tab" aria-selected="false" data-tab="downloaded">Downloaded</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="my-games">My games</button>
 			</div>
 			<div id="game-panel" class="tab-panel"></div>
@@ -76,6 +76,11 @@
 		function makeGameCard(gameInfo) {
 				const card = document.createElement("article");
 				card.className = "game";
+				card.tabIndex = 0;
+				card.setAttribute("role", "button");
+				card.setAttribute("aria-label", `Play ${gameInfo.title}`);
+				card.onclick = () => run(() => GameLibrary.play(gameInfo.file));
+				card.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); card.click(); } };
 				const title = document.createElement("strong");
 				title.textContent = gameInfo.title;
 				const meta = document.createElement("small");
@@ -89,20 +94,21 @@
 				play.textContent = "Play";
 				play.onclick = () => run(() => GameLibrary.play(gameInfo.file));
 				const download = document.createElement("button");
-				download.textContent = "⇩";
+				download.innerHTML = GameLibrary.icon("download");
 				download.title = "Download";
 				download.setAttribute("aria-label", `Download ${gameInfo.title}`);
 				download.onclick = () => run(() => GameLibrary.download(gameInfo.file));
 				const offline = document.createElement("button");
-				offline.textContent = "▣";
+				offline.innerHTML = GameLibrary.icon("offline");
 				offline.title = "Save offline";
 				offline.setAttribute("aria-label", `Save ${gameInfo.title} offline`);
 				offline.onclick = () => run(async () => { await GameLibrary.saveOffline(gameInfo.file); showStatus(`${gameInfo.title} is saved offline.`); await renderTab(); });
 				const pin = document.createElement("button");
-				pin.textContent = GameLibrary.isPinned(gameInfo.file) ? "★" : "☆";
+				pin.innerHTML = GameLibrary.icon("pin");
 				pin.title = GameLibrary.isPinned(gameInfo.file) ? "Unpin" : "Pin";
 				pin.setAttribute("aria-label", pin.title);
 				pin.onclick = () => run(async () => { GameLibrary.togglePinned(gameInfo.file); await renderTab(); });
+				actions.onclick = (event) => event.stopPropagation();
 				actions.append(play, download, offline, pin);
 				card.append(copy, actions);
 				return card;
@@ -115,7 +121,7 @@
 			const pinned = GameLibrary.getPinned().map(toGame);
 			const recent = GameLibrary.getRecent().map(toGame);
 			const myGames = saved.filter((game) => game.source === "upload");
-			const selected = { pinned, recent, offline: saved, downloaded: saved, "my-games": myGames }[activeTab];
+			const selected = { pinned, recent, offline: saved, "my-games": myGames }[activeTab];
 			gamePanel.replaceChildren();
 			if (!selected.length) {
 				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet.</div>`;
