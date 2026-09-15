@@ -115,8 +115,13 @@
         }
 
         .game-row {
+          align-items: center;
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 4px;
           display: flex;
-          gap: 8px;
+          gap: 10px;
+          padding: 8px;
           width: 100%;
           max-width: 600px;
         }
@@ -131,27 +136,50 @@
         }
 
         .game-actions button {
-          border: 0;
-          border-radius: 6px;
+          position: relative;
           background: #465f91;
           color: white;
+        .game-menu summary {
+          border: 1px solid var(--line);
+          border-radius: 4px;
           cursor: pointer;
-          font-size: 18px;
-          font-weight: 700;
-          height: 36px;
-          padding: 4px 9px;
-          width: 36px;
-        }
-
-        .game-actions button:hover {
-          background: #79aadb;
-        }
-
+          font: 700 13px Arial, sans-serif;
+          list-style: none;
+          padding: 9px 11px;
+          white-space: nowrap;
         #action-status {
           color: #f5d58d;
-          min-height: 24px;
-          text-align: center;
+        .game-menu summary::-webkit-details-marker { display: none; }
+        .game-menu summary::after { content: " ▾"; color: var(--accent); }
+        .game-menu[open] summary, .game-menu summary:hover { border-color: var(--accent); }
+        .menu-content {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 4px;
+          display: grid;
+          gap: 4px;
+          padding: 6px;
+          position: absolute;
+          right: 0;
+          top: calc(100% + 5px);
+          z-index: 5;
         }
+        .menu-content button {
+          background: transparent;
+          border: 0;
+          color: var(--ink);
+          cursor: pointer;
+          font: 14px Arial, sans-serif;
+          padding: 8px 12px;
+          text-align: left;
+          white-space: nowrap;
+        }
+        .menu-content button:hover { background: var(--accent); color: #201a12; }
+        .game-row input[type="button"] {
+          background: transparent;
+          border: 0;
+          box-shadow: none;
+          padding: 12px 10px;
 
         .empty-message {
             color: rgba(255,255,255,0.6);
@@ -406,25 +434,28 @@ function generateAllSections() {
         btn.value = file;
         btn.onclick = () => runGameAction(() => GameLibrary.play(file));
 
-        const actions = document.createElement("div");
-        actions.className = "game-actions";
+        const actions = document.createElement("details");
+        actions.className = "game-actions game-menu";
+        const summary = document.createElement("summary");
+        summary.textContent = "Actions";
+        const menu = document.createElement("div");
+        menu.className = "menu-content";
+        actions.append(summary, menu);
         const actionButton = (label, icon, action) => {
           const actionBtn = document.createElement("button");
           actionBtn.type = "button";
-          actionBtn.innerHTML = icon;
-          actionBtn.setAttribute("aria-label", label);
-          actionBtn.title = label;
+          actionBtn.textContent = label;
           actionBtn.onclick = action;
-          actions.appendChild(actionBtn);
+          menu.appendChild(actionBtn);
         };
         const pinLabel = GameLibrary.isPinned(file) ? "Unpin" : "Pin";
-        actionButton(pinLabel, GameLibrary.isPinned(file) ? "★" : "☆", () => {
+        actionButton(pinLabel, null, () => {
           GameLibrary.togglePinned(file);
           window.location.reload();
         });
-        actionButton("Download", "⇩", () => runGameAction(() => GameLibrary.download(file)));
-        actionButton("Save offline", "▣", () => runGameAction(async () => {
-          await GameLibrary.toggleOffline(file);
+        actionButton("Download", null, () => runGameAction(() => GameLibrary.download(file)));
+        actionButton("Save offline", null, () => runGameAction(async () => {
+          await GameLibrary.saveOffline(file);
           showActionStatus(`${file} is saved for offline play.`);
         }));
         row.append(btn, actions);
