@@ -100,6 +100,15 @@ const GameLibrary = (() => {
     localStorage.setItem(recentKey, JSON.stringify([file, ...recent].slice(0, 20)));
   }
 
+  async function getStatus(file, available = true) {
+    const saved = await getSavedRecord(file);
+    const statuses = [];
+    if (available) statuses.push("Available");
+    if (saved) statuses.push("Offline ready");
+    if (isPinned(file)) statuses.push("Pinned");
+    return statuses;
+  }
+
   async function getGame(file) {
     const saved = await getSaved(file);
     if (saved !== null) return saved;
@@ -141,6 +150,7 @@ const GameLibrary = (() => {
       #utilities-toolbar button:hover{background:#f0b35b;color:#201a12}
       #utilities-toolbar svg{height:18px;width:18px}
       #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
+      #utilities-toolbar .utilities-toolbar-status{color:#f0b35b;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
       #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
       body.utilities-minimized>*:not(#utilities-toolbar){display:none!important}
@@ -154,6 +164,7 @@ const GameLibrary = (() => {
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
+      <span class="utilities-toolbar-status" data-status>Playing</span>
       <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
       <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
@@ -166,15 +177,18 @@ const GameLibrary = (() => {
         const library = host && host.GameLibrary;
         const file = ${JSON.stringify(file)};
         const title = ${JSON.stringify(title)};
+        const status = toolbar.querySelector("[data-status]");
+        const setStatus = (message) => { status.textContent = message; };
+        const callLibrary = async (callback, success) => { try { if (!library) throw new Error("The library window is unavailable."); await callback(); setStatus(success); } catch (error) { setStatus(error.message); } };
         const action = (name, callback) => toolbar.querySelector("[data-action=\"" + name + "\"]").addEventListener("click", callback);
         action("close", () => window.close());
         action("dock", () => toolbar.classList.toggle("docked"));
         action("minimize", (event) => { document.body.classList.toggle("utilities-minimized"); event.currentTarget.title = document.body.classList.contains("utilities-minimized") ? "Restore game" : "Minimize to icon"; });
-        action("refresh", async () => { const text = await library.getGame(file); document.open(); document.write(library.buildGameDocument(text, file, title)); document.close(); });
-        action("back", () => { window.location.href = new URL("index.html", host.location.href).href; });
-        action("pin", () => { library.togglePinned(file); });
-        action("download", () => { library.download(file); });
-        action("offline", async () => { await library.saveOffline(file); });
+        action("refresh", () => callLibrary(async () => { const text = await library.getGame(file); document.open(); document.write(library.buildGameDocument(text, file, title)); document.close(); }, "Playing"));
+        action("back", () => { if (host) window.location.href = new URL("index.html", host.location.href).href; else window.history.back(); });
+        action("pin", () => callLibrary(() => library.togglePinned(file), "Pinned"));
+        action("download", () => callLibrary(() => library.download(file), "Downloaded"));
+        action("offline", () => callLibrary(() => library.saveOffline(file), "Offline ready"));
         const move = toolbar.querySelector('[data-action="move"]');
         let moving = false;
         let offsetX = 0;
@@ -238,7 +252,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, icon, importGame, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
+  return { buildGameDocument, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importGame, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned };
 })();
 
 window.GameLibrary = GameLibrary;

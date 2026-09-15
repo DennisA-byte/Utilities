@@ -32,6 +32,7 @@
 		.game { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-top: 1px solid var(--line); }
 		.game strong { display: block; font-size: 19px; }
 		.game small { color: var(--muted); }
+		.game-status { color: var(--accent); font: 11px Arial, sans-serif; letter-spacing: .03em; text-transform: uppercase; }
 		.game-actions button { width: 36px; height: 36px; padding: 4px 9px; font-size: 18px; }
 		.game-actions button svg { height: 18px; width: 18px; }
 		.game-actions .play-button { width: auto; height: auto; padding: 8px 12px; font-size: 12px; }
@@ -84,7 +85,8 @@
 				const title = document.createElement("strong");
 				title.textContent = gameInfo.title;
 				const meta = document.createElement("small");
-				meta.textContent = gameInfo.source === "upload" ? "Uploaded to this browser" : "Ready in your shelf";
+				meta.className = "game-status";
+				meta.textContent = gameInfo.statuses.join(" · ");
 				const copy = document.createElement("div");
 				copy.append(title, meta);
 				const actions = document.createElement("div");
@@ -92,7 +94,7 @@
 				const play = document.createElement("button");
 				play.className = "play-button";
 				play.textContent = "Play";
-				play.onclick = () => run(() => GameLibrary.play(gameInfo.file));
+				play.onclick = () => run(() => GameLibrary.play(gameInfo.file), meta, "Playing");
 				const download = document.createElement("button");
 				download.innerHTML = GameLibrary.icon("download");
 				download.title = "Download";
@@ -117,7 +119,14 @@
 		async function renderTab() {
 			const saved = (await GameLibrary.getSavedGames()).map((game) => ({ ...game, title: game.title || game.file, source: game.source || "offline" }));
 			const savedByFile = new Map(saved.map((game) => [game.file, game]));
-			const toGame = (file) => savedByFile.get(file) || { file, title: file, source: "library" };
+			const toGame = (file) => {
+				const game = savedByFile.get(file) || { file, title: file, source: "library" };
+				game.statuses = ["Available"];
+				if (savedByFile.has(file)) game.statuses.push("Offline ready");
+				if (GameLibrary.isPinned(file)) game.statuses.push("Pinned");
+				return game;
+			};
+			saved.forEach((game) => { game.statuses = ["Available", "Offline ready"]; if (GameLibrary.isPinned(game.file)) game.statuses.push("Pinned"); });
 			const pinned = GameLibrary.getPinned().map(toGame);
 			const recent = GameLibrary.getRecent().map(toGame);
 			const myGames = saved.filter((game) => game.source === "upload");
@@ -130,8 +139,8 @@
 			selected.forEach((game) => gamePanel.appendChild(makeGameCard(game)));
 		}
 
-		async function run(action) {
-			try { await action(); } catch (error) { showStatus(error.message); }
+		async function run(action, statusElement, successStatus) {
+			try { await action(); if (statusElement && successStatus) statusElement.textContent = successStatus; } catch (error) { if (statusElement) statusElement.textContent = "Not available"; showStatus(error.message); }
 		}
 
 		document.querySelectorAll("[data-tab]").forEach((tab) => tab.addEventListener("click", async () => {
