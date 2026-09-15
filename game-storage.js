@@ -148,12 +148,14 @@ const GameLibrary = (() => {
 
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
-    const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(button&&button.dataset.action!=="move"&&window.opener){event.preventDefault();window.opener.postMessage({type:"utilities-toolbar-action",action:button.dataset.action},"*");}});var moving=false,x=0,y=0;move.addEventListener("pointerdown",function(event){moving=true;toolbar.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}});move.addEventListener("pointerup",function(){moving=false;});})();<\/script>`;
+    const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(button&&window.opener){event.preventDefault();window.opener.postMessage({type:"utilities-toolbar-action",action:button.dataset.action},"*");}});var moving=false,x=0,y=0;move.addEventListener("pointerdown",function(event){moving=true;toolbar.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}});move.addEventListener("pointerup",function(){moving=false;});})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:50%;padding:6px;position:fixed;top:12px;transform:translateX(-50%);z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
       #utilities-toolbar button:hover{background:#f0b35b;color:#201a12}
       #utilities-toolbar svg{height:18px;width:18px}
+      #utilities-toolbar .utilities-drag-region{align-items:center;cursor:grab;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
+      #utilities-toolbar .utilities-drag-region:active{cursor:grabbing}
       #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status{color:#f0b35b;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-connection{color:#b9b4a7;font-size:11px;margin-left:4px}
@@ -165,14 +167,14 @@ const GameLibrary = (() => {
       #utilities-toolbar .utilities-save-menu button{font:12px Arial,sans-serif;height:auto;padding:8px 10px;white-space:nowrap;width:auto}
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
       #utilities-toolbar.docked{border-radius:0;left:0;right:0;top:0;transform:none}
-      body.utilities-minimized>*:not(#utilities-toolbar){display:none!important}
-      body.utilities-minimized #utilities-toolbar>*:not([data-action="minimize"]){display:none}
+      #utilities-toolbar.minimized{background:#252b3599;box-shadow:0 4px 12px #0005;opacity:.72;padding:4px}
+      #utilities-toolbar.minimized>*:not([data-action="minimize"]){display:none}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
       <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
       <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
       <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
-      <button data-action="move" aria-label="Move toolbar" title="Move toolbar">${icon("move")}</button>
+      <span data-action="move" class="utilities-drag-region" role="button" aria-label="Move toolbar" title="Drag to move toolbar">${icon("move")}</span>
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
@@ -224,27 +226,6 @@ const GameLibrary = (() => {
         setStatus(error.message || "Not available");
       }
     };
-    const move = toolbar.querySelector('[data-action="move"]');
-    let moving = false;
-    let offsetX = 0;
-    let offsetY = 0;
-    move.addEventListener("pointerdown", (event) => {
-      moving = true;
-      toolbar.setPointerCapture(event.pointerId);
-      const rect = toolbar.getBoundingClientRect();
-      offsetX = event.clientX - rect.left;
-      offsetY = event.clientY - rect.top;
-      toolbar.style.left = `${rect.left}px`;
-      toolbar.style.top = `${rect.top}px`;
-      toolbar.style.transform = "none";
-    });
-    move.addEventListener("pointermove", (event) => {
-      if (moving) {
-        toolbar.style.left = `${event.clientX - offsetX}px`;
-        toolbar.style.top = `${event.clientY - offsetY}px`;
-      }
-    });
-    move.addEventListener("pointerup", () => { moving = false; });
   }
 
   async function toolbarAction(gameWindow, file, name) {
@@ -254,7 +235,7 @@ const GameLibrary = (() => {
     try {
       if (name === "close") return gameWindow.close();
       if (name === "dock") return toolbar.classList.toggle("docked");
-      if (name === "minimize") return gameWindow.document.body.classList.toggle("utilities-minimized");
+      if (name === "minimize") return toolbar.classList.toggle("minimized");
       if (name === "refresh") return refreshGameWindow(gameWindow, file, toolbar.querySelector(".utilities-toolbar-title").textContent);
       if (name === "back") return gameWindow.location.href = new URL("index.html", window.location.href).href;
       if (name === "pin") { togglePinned(file); setStatus("Pinned"); return; }
