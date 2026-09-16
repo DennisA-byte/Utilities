@@ -21,10 +21,13 @@
 		a, button { border: 1px solid var(--line); border-radius: 4px; cursor: pointer; color: var(--ink); font: 700 14px Arial, sans-serif; text-decoration: none; }
 		.actions > a { align-items: center; display: inline-flex; height: 42px; padding: 0 16px; }
 		.actions a.primary { border-color: var(--accent); background: var(--accent); color: #201a12; }
+		.network-action[aria-disabled="true"] { background: #1d2229; border-color: #303640; color: #706f6a; cursor: not-allowed; opacity: .65; }
 		button:hover, a:hover { border-color: var(--accent); }
 		h2 { margin: 0 0 16px; font-size: 28px; }
 		#pinned-games { display: grid; gap: 12px; }
-		.tab-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+		.tab-list { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+		.tab-list .upload-button { margin-left: auto; }
+		.tab-list .upload-button span { height: 38px; }
 		.tab { background: transparent; color: var(--muted); padding: 10px 14px; }
 		.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #201a12; }
 		.tab-panel[hidden] { display: none; }
@@ -52,10 +55,9 @@
 		<h1>Pick up where you left off.</h1>
 		<p class="intro">Pin games from the full library, save them for offline play, or download a copy to keep.</p>
 		<div class="actions">
-			<a class="primary" href="AllFIles.html">Browse all games</a>
-			<label class="upload-button"><span class="actions a">Upload HTML game</span><input id="upload-game" type="file" accept=".html,text/html"></label>
-			<a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
-			<a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
+			<a class="primary network-action" href="AllFIles.html">Browse all games</a>
+			<a class="network-action" href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+			<a class="network-action" href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
 			<span class="connection-status unknown" id="connection-status"><span aria-hidden="true"></span><span id="connection-label">Unknown</span></span>
 		</div>
 		<section aria-labelledby="pinned-heading">
@@ -66,6 +68,7 @@
 				<button class="tab" role="tab" aria-selected="false" data-tab="recent">Recently played</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="offline">Offline</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="my-games">My games</button>
+				<label class="upload-button"><span>Upload HTML game</span><input id="upload-game" type="file" accept=".html,text/html"></label>
 			</div>
 			<div id="game-panel" class="tab-panel"></div>
 		</section>
@@ -87,10 +90,18 @@
 			const state = typeof navigator.onLine === "boolean" ? (navigator.onLine ? "online" : "offline") : "unknown";
 			statusBox.className = `connection-status ${state}`;
 			statusLabel.textContent = state[0].toUpperCase() + state.slice(1);
+			document.querySelectorAll(".network-action").forEach((action) => {
+				const disabled = state === "offline";
+				action.setAttribute("aria-disabled", disabled);
+				action.tabIndex = disabled ? -1 : 0;
+			});
 		}
 
 		window.addEventListener("online", updateConnectionStatus);
 		window.addEventListener("offline", updateConnectionStatus);
+		document.querySelectorAll(".network-action").forEach((action) => action.addEventListener("click", (event) => {
+			if (action.getAttribute("aria-disabled") === "true") event.preventDefault();
+		}));
 		updateConnectionStatus();
 
 		function makeGameCard(gameInfo) {
