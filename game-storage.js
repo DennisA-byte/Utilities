@@ -64,6 +64,21 @@ const GameLibrary = (() => {
     });
   }
 
+  async function removeGame(file) {
+    const database = await openDatabase();
+    return new Promise((resolve, reject) => {
+      const request = database.transaction(storeName, "readwrite").objectStore(storeName).delete(file);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function renameGame(file, title) {
+    const record = await getSavedRecord(file);
+    if (!record) throw new Error("That game is no longer available.");
+    await saveGame(file, record.text, { ...record, title });
+  }
+
   function getPinned() {
     try {
       return JSON.parse(localStorage.getItem(pinnedKey) || "[]");
@@ -361,7 +376,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, clearData, connectionLabel, download, exportData, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
+  return { buildGameDocument, clearData, connectionLabel, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, removeGame, renameGame, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
 })();
 
 window.GameLibrary = GameLibrary;

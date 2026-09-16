@@ -47,6 +47,7 @@
 		.game-actions button { width: 36px; height: 36px; padding: 4px 9px; font-size: 18px; }
 		.game-actions button svg { height: 18px; width: 18px; }
 		.game-actions .play-button { width: auto; height: auto; padding: 8px 12px; font-size: 12px; }
+		.game-actions .manage-button { height: auto; padding: 8px 10px; width: auto; }
 		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
 		.empty .upload-link { background: transparent; border: 0; color: var(--accent); padding: 0; text-decoration: underline; }
 		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
@@ -79,6 +80,17 @@
 				<button class="dialog-close" id="source-tools-close" type="button">Close</button>
 			</div>
 		</dialog>
+		<dialog id="rename-dialog" aria-labelledby="rename-title">
+			<h2 id="rename-title">Rename game</h2>
+			<form id="rename-form" method="dialog">
+				<label for="rename-input">Game name</label>
+				<input id="rename-input" required maxlength="120">
+				<div class="dialog-actions">
+					<button type="submit">Save name</button>
+					<button class="dialog-close" id="rename-cancel" type="button">Cancel</button>
+				</div>
+			</form>
+		</dialog>
 		<section aria-labelledby="pinned-heading">
 			<h2 id="pinned-heading">Your games</h2>
 			<div id="status" role="status"></div>
@@ -104,9 +116,10 @@
 		}
 
 		function inlineScript(html, source, contents) {
-			const safeContents = contents.replace(/<\/script/gi, "\\x3c/script");
+			const encoded = btoa(unescape(encodeURIComponent(contents)));
 			const closingScript = "<" + "/script>";
-			return html.replace(`<script src="${source}">${closingScript}`, `<script>${safeContents}${closingScript}`);
+			const bootstrap = `<script>eval(decodeURIComponent(escape(atob("${encoded}"))))${closingScript}`;
+			return html.replace(`<script src="${source}">${closingScript}`, bootstrap);
 		}
 
 		function toDataUrl(html) {
@@ -169,6 +182,19 @@
 		document.getElementById("compile-open").addEventListener("click", () => runCompilation("open"));
 		document.getElementById("source-tools").addEventListener("click", () => document.getElementById("source-tools-dialog").showModal());
 		document.getElementById("source-tools-close").addEventListener("click", () => document.getElementById("source-tools-dialog").close());
+		document.getElementById("rename-cancel").addEventListener("click", () => document.getElementById("rename-dialog").close());
+		document.getElementById("rename-form").addEventListener("submit", async (event) => {
+			event.preventDefault();
+			const dialog = document.getElementById("rename-dialog");
+			const title = document.getElementById("rename-input").value.trim();
+			if (!title) return;
+			try {
+				await GameLibrary.renameGame(dialog.dataset.file, title);
+				dialog.close();
+				showStatus("Game renamed.");
+				await renderTab();
+			} catch (error) { showStatus(error.message); }
+		});
 
 		function updateConnectionStatus() {
 			const statusBox = document.getElementById("connection-status");
@@ -227,10 +253,37 @@
 				pin.title = GameLibrary.isPinned(gameInfo.file) ? "Unpin" : "Pin";
 				pin.setAttribute("aria-label", pin.title);
 				pin.onclick = () => run(async () => { GameLibrary.togglePinned(gameInfo.file); await renderTab(); });
+				if (activeTab === "my-games") {
+					const rename = document.createElement("button");
+					rename.textContent = "Rename";
+					rename.className = "manage-button";
+					rename.title = "Rename game";
+					rename.onclick = () => openRenameDialog(gameInfo);
+					const remove = document.createElement("button");
+					remove.textContent = "Delete";
+					remove.className = "manage-button";
+					remove.title = "Delete game";
+					remove.onclick = () => run(async () => {
+						if (!window.confirm(`Delete ${gameInfo.title}?`)) return;
+						await GameLibrary.removeGame(gameInfo.file);
+						showStatus(`${gameInfo.title} deleted.`);
+						await renderTab();
+					});
+					actions.append(rename, remove);
+				}
 				actions.onclick = (event) => event.stopPropagation();
-				actions.append(play, download, offline, pin);
+				actions.prepend(play, download, offline, pin);
 				card.append(copy, actions);
 				return card;
+		}
+
+		function openRenameDialog(gameInfo) {
+			const dialog = document.getElementById("rename-dialog");
+			const input = document.getElementById("rename-input");
+			input.value = gameInfo.title;
+			dialog.dataset.file = gameInfo.file;
+			dialog.showModal();
+			input.select();
 		}
 
 		async function renderTab() {
