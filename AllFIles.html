@@ -555,10 +555,11 @@ searchInput.addEventListener("input", () => {
   const query = searchInput.value.trim().toLowerCase();
   document.querySelectorAll(".letter-section").forEach((section) => {
     const rows = [...section.querySelectorAll(".game-row")];
-    const hasMatch = rows.some((row) => {
+    let hasMatch = false;
+    rows.forEach((row) => {
       const match = !query || row.dataset.search.includes(query);
       row.hidden = !match;
-      return match;
+      hasMatch ||= match;
     });
     section.hidden = !hasMatch;
   });
