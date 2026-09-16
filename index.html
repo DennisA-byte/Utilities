@@ -116,15 +116,13 @@
 
 		async function runCompilation(mode) {
 			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
-			let newWindow;
-			if (mode === "open") newWindow = window.open("about:blank", "_blank");
 			buttons.forEach((button) => { button.disabled = true; });
 			showStatus("Compiling app...");
 			try {
 				const compiledApp = await compileApplication();
 				if (mode === "open") {
+					const newWindow = window.open(toDataUrl(compiledApp), "_blank");
 					if (!newWindow) throw new Error("Allow pop-ups to open the compiled app.");
-					newWindow.location.href = toDataUrl(compiledApp);
 				} else {
 					const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
 					const link = document.createElement("a");
@@ -135,7 +133,6 @@
 				}
 				showStatus(mode === "open" ? "Compiled app opened." : "Compiled app downloaded.");
 			} catch (error) {
-				if (newWindow) newWindow.close();
 				showStatus(error.message);
 			} finally {
 				buttons.forEach((button) => { button.disabled = false; });
