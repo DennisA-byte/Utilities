@@ -30,6 +30,7 @@
 		.dialog-copy { color: var(--muted); margin: 0 0 18px; }
 		.dialog-actions { display: grid; gap: 8px; }
 		.dialog-actions a, .dialog-actions button { align-items: center; background: transparent; display: flex; justify-content: space-between; padding: 11px 13px; width: 100%; }
+		.dialog-actions [aria-disabled="true"] { color: #706f6a; cursor: not-allowed; opacity: .65; pointer-events: none; }
 		.dialog-actions .dialog-close { color: var(--muted); justify-content: center; margin-top: 8px; }
 		h2 { margin: 0 0 16px; font-size: 28px; }
 		#pinned-games { display: grid; gap: 12px; }
@@ -75,7 +76,7 @@
 			<div class="dialog-actions">
 				<a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
 				<a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
-				<button id="compile-open" type="button">Open compiled app</button>
+				<a id="compile-open" href="#" target="_blank" rel="noopener">Open compiled app</a>
 				<button id="compile-download" type="button">Download compiled app</button>
 				<button class="dialog-close" id="source-tools-close" type="button">Close</button>
 			</div>
@@ -143,10 +144,15 @@
 		}
 
 		let compiledAppUrl = "";
+		let compiledAppOpenUrl = "";
 		const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
-		compilationButtons.forEach((button) => { button.disabled = true; });
+		compilationButtons.forEach((button) => { button.disabled = true; button.setAttribute("aria-disabled", "true"); });
 		const compilationReady = compileApplication().then((compiledApp) => {
 			compiledAppUrl = toDataUrl(compiledApp);
+			compiledAppOpenUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+			const openLink = document.getElementById("compile-open");
+			openLink.href = compiledAppOpenUrl;
+			openLink.removeAttribute("aria-disabled");
 			return compiledApp;
 		}).finally(() => {
 			compilationButtons.forEach((button) => { button.disabled = false; });
@@ -154,18 +160,7 @@
 
 		async function runCompilation(mode) {
 			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
-			if (mode === "open" && compiledAppUrl) {
-				const link = document.createElement("a");
-				link.href = compiledAppUrl;
-				link.target = "_blank";
-				link.rel = "noopener";
-				link.hidden = true;
-				document.body.appendChild(link);
-				link.click();
-				link.remove();
-				showStatus("Compiled app opened.");
-				return;
-			}
+			if (mode === "open") return;
 			buttons.forEach((button) => { button.disabled = true; });
 			showStatus("Compiling app...");
 			try {
@@ -186,7 +181,12 @@
 		}
 
 		document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
-		document.getElementById("compile-open").addEventListener("click", () => runCompilation("open"));
+		document.getElementById("compile-open").addEventListener("click", (event) => {
+			if (!compiledAppOpenUrl) {
+				event.preventDefault();
+				showStatus("Compiled app is still preparing. Try again in a moment.");
+			}
+		});
 		document.getElementById("source-tools").addEventListener("click", () => document.getElementById("source-tools-dialog").showModal());
 		document.getElementById("source-tools-close").addEventListener("click", () => document.getElementById("source-tools-dialog").close());
 		document.getElementById("rename-cancel").addEventListener("click", () => document.getElementById("rename-dialog").close());
@@ -264,11 +264,13 @@
 					const rename = document.createElement("button");
 					rename.textContent = "Rename";
 					rename.className = "manage-button";
+					rename.setAttribute("aria-label", "Rename game");
 					rename.title = "Rename game";
 					rename.onclick = () => openRenameDialog(gameInfo);
 					const remove = document.createElement("button");
 					remove.textContent = "Delete";
 					remove.className = "manage-button";
+					remove.setAttribute("aria-label", "Delete game");
 					remove.title = "Delete game";
 					remove.onclick = () => run(async () => {
 						if (!window.confirm(`Delete ${gameInfo.title}?`)) return;
@@ -311,7 +313,8 @@
 			gamePanel.replaceChildren();
 			if (!selected.length) {
 				const uploadLink = activeTab === "my-games" ? ' <button class="upload-link" type="button">Upload HTML game</button>' : "";
-				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet.${uploadLink}</div>`;
+				const emptyLabel = activeTab === "my-games" ? "my games" : activeTab.replace("-", " ");
+				gamePanel.innerHTML = `<div class="empty">No ${emptyLabel} yet.${uploadLink}</div>`;
 				if (activeTab === "my-games") gamePanel.querySelector(".upload-link").addEventListener("click", () => document.getElementById("upload-game").click());
 				return;
 			}
