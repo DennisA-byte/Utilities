@@ -146,22 +146,33 @@
 		let compiledAppUrl = "";
 		let compiledAppOpenUrl = "";
 		const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
-		compilationButtons.forEach((button) => { button.disabled = true; button.setAttribute("aria-disabled", "true"); });
+		const compilationLabels = new Map([
+			[document.getElementById("compile-download"), "Download compiled app"],
+			[document.getElementById("compile-open"), "Open compiled app"],
+		]);
+		function setCompilationLoading(loading, label = "Preparing app...") {
+			compilationButtons.forEach((button) => {
+				button.disabled = loading;
+				button.setAttribute("aria-disabled", loading);
+				button.textContent = loading ? label : compilationLabels.get(button);
+			});
+		}
+		setCompilationLoading(true);
 		const compilationReady = compileApplication().then((compiledApp) => {
 			compiledAppUrl = toDataUrl(compiledApp);
 			compiledAppOpenUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
 			const openLink = document.getElementById("compile-open");
 			openLink.href = compiledAppOpenUrl;
 			openLink.removeAttribute("aria-disabled");
+			setCompilationLoading(false);
 			return compiledApp;
 		}).finally(() => {
-			compilationButtons.forEach((button) => { button.disabled = false; });
+			setCompilationLoading(false);
 		});
 
 		async function runCompilation(mode) {
-			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
 			if (mode === "open") return;
-			buttons.forEach((button) => { button.disabled = true; });
+			setCompilationLoading(true, "Downloading...");
 			showStatus("Compiling app...");
 			try {
 				if (mode === "open") throw new Error("Compiled app is still preparing. Try again in a moment.");
@@ -176,7 +187,7 @@
 			} catch (error) {
 				showStatus(error.message);
 			} finally {
-				buttons.forEach((button) => { button.disabled = false; });
+				setCompilationLoading(false);
 			}
 		}
 

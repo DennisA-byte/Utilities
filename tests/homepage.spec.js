@@ -2,10 +2,17 @@ const { test, expect } = require("@playwright/test");
 
 test.describe("Utilities homepage", () => {
   test("opens the compiled app as a data URL", async ({ page }) => {
+    await page.route("**/AllFIles.html", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.continue();
+    });
     await page.goto("/index.html");
     const sourceTools = page.getByRole("button", { name: "Source & tools" });
     await expect(sourceTools).toBeEnabled();
     await sourceTools.click();
+    const openLink = page.getByRole("link", { name: "Preparing app..." });
+    await expect(openLink).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByRole("link", { name: "Open compiled app" })).toBeEnabled();
 
     const popupPromise = page.waitForEvent("popup");
     await page.getByRole("link", { name: "Open compiled app" }).click();
