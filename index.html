@@ -24,6 +24,13 @@
 		.actions a.primary { border-color: var(--accent); background: var(--accent); color: #201a12; }
 		.network-action[aria-disabled="true"] { background: #1d2229; border-color: #303640; color: #706f6a; cursor: not-allowed; opacity: .65; }
 		button:hover, a:hover { border-color: var(--accent); }
+		dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); max-width: min(420px, calc(100% - 32px)); padding: 24px; width: 100%; }
+		dialog::backdrop { background: #0b0e12b8; }
+		dialog h2 { margin: 0 0 6px; }
+		.dialog-copy { color: var(--muted); margin: 0 0 18px; }
+		.dialog-actions { display: grid; gap: 8px; }
+		.dialog-actions a, .dialog-actions button { align-items: center; background: transparent; display: flex; justify-content: space-between; padding: 11px 13px; width: 100%; }
+		.dialog-actions .dialog-close { color: var(--muted); justify-content: center; margin-top: 8px; }
 		h2 { margin: 0 0 16px; font-size: 28px; }
 		#pinned-games { display: grid; gap: 12px; }
 		.tab-list { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
@@ -58,12 +65,20 @@
 		<p class="intro">Pin games from the full library, save them for offline play, or download a copy to keep.</p>
 		<div class="actions">
 			<a class="primary network-action" href="AllFIles.html">Browse all games</a>
-			<a class="network-action" href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
-			<button id="compile-download" type="button">Compile app</button>
-			<button id="compile-open" type="button">Open compiled app</button>
-			<a class="network-action" href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
+			<button class="network-action" id="source-tools" type="button">Source &amp; tools</button>
 			<span class="connection-status unknown" id="connection-status"><span aria-hidden="true"></span><span id="connection-label">Unknown</span></span>
 		</div>
+		<dialog id="source-tools-dialog" aria-labelledby="source-tools-title">
+			<h2 id="source-tools-title">Source &amp; tools</h2>
+			<p class="dialog-copy">Download the project or open a standalone copy of the app.</p>
+			<div class="dialog-actions">
+				<a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+				<a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
+				<button id="compile-open" type="button">Open compiled app</button>
+				<button id="compile-download" type="button">Download compiled app</button>
+				<button class="dialog-close" id="source-tools-close" type="button">Close</button>
+			</div>
+		</dialog>
 		<section aria-labelledby="pinned-heading">
 			<h2 id="pinned-heading">Your games</h2>
 			<div id="status" role="status"></div>
@@ -152,6 +167,8 @@
 
 		document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
 		document.getElementById("compile-open").addEventListener("click", () => runCompilation("open"));
+		document.getElementById("source-tools").addEventListener("click", () => document.getElementById("source-tools-dialog").showModal());
+		document.getElementById("source-tools-close").addEventListener("click", () => document.getElementById("source-tools-dialog").close());
 
 		function updateConnectionStatus() {
 			const statusBox = document.getElementById("connection-status");
@@ -162,6 +179,7 @@
 			document.querySelectorAll(".network-action").forEach((action) => {
 				const disabled = state === "offline";
 				action.setAttribute("aria-disabled", disabled);
+				action.disabled = disabled;
 				action.tabIndex = disabled ? -1 : 0;
 			});
 		}
