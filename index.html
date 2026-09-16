@@ -164,8 +164,9 @@
 			const selected = { pinned, recent, offline: saved, "my-games": myGames }[activeTab];
 			gamePanel.replaceChildren();
 			if (!selected.length) {
-				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet. <button class="upload-link" type="button">Upload HTML game</button></div>`;
-				gamePanel.querySelector(".upload-link").addEventListener("click", () => document.getElementById("upload-game").click());
+				const uploadLink = activeTab === "my-games" ? ' <button class="upload-link" type="button">Upload HTML game</button>' : "";
+				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet.${uploadLink}</div>`;
+				if (activeTab === "my-games") gamePanel.querySelector(".upload-link").addEventListener("click", () => document.getElementById("upload-game").click());
 				return;
 			}
 			selected.forEach((game) => gamePanel.appendChild(makeGameCard(game)));
