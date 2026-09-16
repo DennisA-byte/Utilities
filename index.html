@@ -104,7 +104,7 @@
 		}
 
 		function inlineScript(html, source, contents) {
-			const safeContents = contents.replace(/<\/script/gi, "<\\/script");
+			const safeContents = contents.replace(/<\/script/gi, "\\x3c/script");
 			const closingScript = "<" + "/script>";
 			return html.replace(`<script src="${source}">${closingScript}`, `<script>${safeContents}${closingScript}`);
 		}
