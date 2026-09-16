@@ -447,6 +447,7 @@ async function generateAllSections() {
       filesByChar[char].forEach((file) => {
         const row = document.createElement("div");
         row.className = "game-row";
+        row.dataset.search = file.toLowerCase();
         const btn = document.createElement("input");
         btn.type = "button";
         btn.value = file;
@@ -548,5 +549,20 @@ function generateSidebar(allChars, filesByChar) {
   });
 }
 generateAllSections();</script>
+<script>
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("input", () => {
+  const query = searchInput.value.trim().toLowerCase();
+  document.querySelectorAll(".letter-section").forEach((section) => {
+    const rows = [...section.querySelectorAll(".game-row")];
+    const hasMatch = rows.some((row) => {
+      const match = !query || row.dataset.search.includes(query);
+      row.hidden = !match;
+      return match;
+    });
+    section.hidden = !hasMatch;
+  });
+});
+</script>
 </body> 
    </html>
