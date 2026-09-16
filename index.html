@@ -90,7 +90,8 @@
 
 		function inlineScript(html, source, contents) {
 			const safeContents = contents.replace(/<\/script/gi, "<\\/script");
-			return html.replace(`<script src="${source}"></script>`, `<script>${safeContents}</script>`);
+			const closingScript = "<" + "/script>";
+			return html.replace(`<script src="${source}">${closingScript}`, `<script>${safeContents}${closingScript}`);
 		}
 
 		function toDataUrl(html) {
