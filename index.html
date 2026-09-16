@@ -20,6 +20,7 @@
 		.upload-button input { display: none; }
 		a, button { border: 1px solid var(--line); border-radius: 4px; cursor: pointer; color: var(--ink); font: 700 14px Arial, sans-serif; text-decoration: none; }
 		.actions > a { align-items: center; display: inline-flex; height: 42px; padding: 0 16px; }
+		.actions > button { align-items: center; background: var(--panel); display: inline-flex; height: 42px; padding: 0 16px; }
 		.actions a.primary { border-color: var(--accent); background: var(--accent); color: #201a12; }
 		.network-action[aria-disabled="true"] { background: #1d2229; border-color: #303640; color: #706f6a; cursor: not-allowed; opacity: .65; }
 		button:hover, a:hover { border-color: var(--accent); }
@@ -58,6 +59,8 @@
 		<div class="actions">
 			<a class="primary network-action" href="AllFIles.html">Browse all games</a>
 			<a class="network-action" href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+			<button id="compile-download" type="button">Compile app</button>
+			<button id="compile-open" type="button">Open compiled app</button>
 			<a class="network-action" href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
 			<span class="connection-status unknown" id="connection-status"><span aria-hidden="true"></span><span id="connection-label">Unknown</span></span>
 		</div>
@@ -84,6 +87,62 @@
 			status.textContent = message;
 			window.setTimeout(() => { status.textContent = ""; }, 3000);
 		}
+
+		function inlineScript(html, source, contents) {
+			const safeContents = contents.replace(/<\/script/gi, "<\\/script");
+			return html.replace(`<script src="${source}"></script>`, `<script>${safeContents}</script>`);
+		}
+
+		function toDataUrl(html) {
+			return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+		}
+
+		async function compileApplication() {
+			const responseFor = (path) => fetch(path).then((response) => {
+				if (!response.ok) throw new Error(`Could not read ${path}`);
+				return response.text();
+			});
+			const [indexSource, allFilesSource, filesSource, storageSource] = await Promise.all([
+				responseFor("index.html"), responseFor("AllFIles.html"), responseFor("files.js"), responseFor("game-storage.js"),
+			]);
+			let compiledLibrary = inlineScript(allFilesSource, "files.js", filesSource);
+			compiledLibrary = inlineScript(compiledLibrary, "game-storage.js", storageSource);
+			compiledLibrary = compiledLibrary.replace('href="index.html"', 'href="javascript:history.back()"');
+			let compiledApp = inlineScript(indexSource, "game-storage.js", storageSource);
+			compiledApp = compiledApp.replace('href="AllFIles.html"', `href="${toDataUrl(compiledLibrary)}"`);
+			return compiledApp;
+		}
+
+		async function runCompilation(mode) {
+			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+			let newWindow;
+			if (mode === "open") newWindow = window.open("about:blank", "_blank");
+			buttons.forEach((button) => { button.disabled = true; });
+			showStatus("Compiling app...");
+			try {
+				const compiledApp = await compileApplication();
+				if (mode === "open") {
+					if (!newWindow) throw new Error("Allow pop-ups to open the compiled app.");
+					newWindow.location.href = toDataUrl(compiledApp);
+				} else {
+					const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+					const link = document.createElement("a");
+					link.href = downloadUrl;
+					link.download = "utilities-compiled.html";
+					link.click();
+					URL.revokeObjectURL(downloadUrl);
+				}
+				showStatus(mode === "open" ? "Compiled app opened." : "Compiled app downloaded.");
+			} catch (error) {
+				if (newWindow) newWindow.close();
+				showStatus(error.message);
+			} finally {
+				buttons.forEach((button) => { button.disabled = false; });
+			}
+		}
+
+		document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
+		document.getElementById("compile-open").addEventListener("click", () => runCompilation("open"));
 
 		function updateConnectionStatus() {
 			const statusBox = document.getElementById("connection-status");
