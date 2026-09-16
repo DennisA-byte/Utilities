@@ -40,6 +40,7 @@
 		.game-actions button svg { height: 18px; width: 18px; }
 		.game-actions .play-button { width: auto; height: auto; padding: 8px 12px; font-size: 12px; }
 		.empty { padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
+		.empty .upload-link { background: transparent; border: 0; color: var(--accent); padding: 0; text-decoration: underline; }
 		#status { min-height: 24px; margin: 12px 0; color: var(--accent); font: 13px Arial, sans-serif; }
 		.connection-status { align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); display: inline-flex; gap: 8px; padding: 8px 10px; position: fixed; right: 16px; text-transform: uppercase; top: 16px; z-index: 1; font: 700 12px Arial, sans-serif; letter-spacing: .08em; }
 		.connection-status::before { align-items: center; border-radius: 50%; content: ""; display: inline-flex; flex: 0 0 10px; height: 10px; justify-content: center; width: 10px; }
@@ -163,7 +164,8 @@
 			const selected = { pinned, recent, offline: saved, "my-games": myGames }[activeTab];
 			gamePanel.replaceChildren();
 			if (!selected.length) {
-				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet.</div>`;
+				gamePanel.innerHTML = `<div class="empty">No ${activeTab.replace("-", " ")} games yet. <button class="upload-link" type="button">Upload HTML game</button></div>`;
+				gamePanel.querySelector(".upload-link").addEventListener("click", () => document.getElementById("upload-game").click());
 				return;
 			}
 			selected.forEach((game) => gamePanel.appendChild(makeGameCard(game)));
