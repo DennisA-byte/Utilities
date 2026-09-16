@@ -114,24 +114,35 @@
 			return compiledApp;
 		}
 
+		let compiledAppUrl = "";
+		const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+		compilationButtons.forEach((button) => { button.disabled = true; });
+		const compilationReady = compileApplication().then((compiledApp) => {
+			compiledAppUrl = toDataUrl(compiledApp);
+			return compiledApp;
+		}).finally(() => {
+			compilationButtons.forEach((button) => { button.disabled = false; });
+		});
+
 		async function runCompilation(mode) {
 			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+			if (mode === "open" && compiledAppUrl) {
+				const newWindow = window.open(compiledAppUrl, "_blank");
+				showStatus(newWindow ? "Compiled app opened." : "Allow pop-ups to open the compiled app.");
+				return;
+			}
 			buttons.forEach((button) => { button.disabled = true; });
 			showStatus("Compiling app...");
 			try {
-				const compiledApp = await compileApplication();
-				if (mode === "open") {
-					const newWindow = window.open(toDataUrl(compiledApp), "_blank");
-					if (!newWindow) throw new Error("Allow pop-ups to open the compiled app.");
-				} else {
-					const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
-					const link = document.createElement("a");
-					link.href = downloadUrl;
-					link.download = "utilities-compiled.html";
-					link.click();
-					URL.revokeObjectURL(downloadUrl);
-				}
-				showStatus(mode === "open" ? "Compiled app opened." : "Compiled app downloaded.");
+				if (mode === "open") throw new Error("Compiled app is still preparing. Try again in a moment.");
+				const compiledApp = await compilationReady;
+				const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+				const link = document.createElement("a");
+				link.href = downloadUrl;
+				link.download = "utilities-compiled.html";
+				link.click();
+				URL.revokeObjectURL(downloadUrl);
+				showStatus("Compiled app downloaded.");
 			} catch (error) {
 				showStatus(error.message);
 			} finally {
