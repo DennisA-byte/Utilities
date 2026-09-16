@@ -155,8 +155,15 @@
 		async function runCompilation(mode) {
 			const buttons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
 			if (mode === "open" && compiledAppUrl) {
-				const newWindow = window.open(compiledAppUrl, "_blank");
-				showStatus(newWindow ? "Compiled app opened." : "Allow pop-ups to open the compiled app.");
+				const link = document.createElement("a");
+				link.href = compiledAppUrl;
+				link.target = "_blank";
+				link.rel = "noopener";
+				link.hidden = true;
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+				showStatus("Compiled app opened.");
 				return;
 			}
 			buttons.forEach((button) => { button.disabled = true; });
