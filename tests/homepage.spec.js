@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { pathToFileURL } = require("node:url");
 
 test.describe("Utilities homepage", () => {
   test("opens the compiled app as a data URL", async ({ page }) => {
@@ -20,7 +21,34 @@ test.describe("Utilities homepage", () => {
     await popup.waitForLoadState("domcontentloaded");
     expect(popup.url()).toMatch(/^blob:/);
     await expect(popup.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    const libraryPopupPromise = popup.waitForEvent("popup");
+    await popup.getByRole("link", { name: "Browse all games" }).click();
+    const libraryPopup = await libraryPopupPromise;
+    await libraryPopup.waitForLoadState("domcontentloaded");
+    await expect(libraryPopup.getByRole("heading", { name: "UGS Files" })).toBeVisible();
+    await libraryPopup.close();
     await popup.close();
+  });
+
+  test("downloaded compiled app opens its embedded game library", async ({ page }, testInfo) => {
+    await page.goto("/index.html");
+    await page.getByRole("button", { name: "Source & tools" }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download compiled app" }).click();
+    const download = await downloadPromise;
+    const compiledPath = testInfo.outputPath("utilities-compiled.html");
+    await download.saveAs(compiledPath);
+
+    const compiledPage = await page.context().newPage();
+    await compiledPage.goto(pathToFileURL(compiledPath).href);
+    await expect(compiledPage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    const libraryPopupPromise = compiledPage.waitForEvent("popup");
+    await compiledPage.getByRole("link", { name: "Browse all games" }).click();
+    const libraryPopup = await libraryPopupPromise;
+    await libraryPopup.waitForLoadState("domcontentloaded");
+    await expect(libraryPopup.getByRole("heading", { name: "UGS Files" })).toBeVisible();
+    await libraryPopup.close();
+    await compiledPage.close();
   });
 
   test("disables source tools while offline", async ({ page, context }) => {
