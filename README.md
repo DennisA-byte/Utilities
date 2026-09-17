@@ -1,4 +1,5 @@
 # Utilities
+[![Playwright tests](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml/badge.svg)](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml)
 
 ## How to run
 ### Run locally
