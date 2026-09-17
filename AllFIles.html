@@ -155,7 +155,6 @@
           min-height: 24px;
           text-align: center;
         }
-        .game-menu .menu-toggle::after { content: " ▾"; color: var(--accent); }
         .game-menu.open .menu-toggle, .game-menu .menu-toggle:hover { border-color: var(--accent); }
         .menu-content {
           background: var(--panel);
@@ -310,6 +309,7 @@
               padding: 11px 14px;
               text-decoration: none;
             }
+            .back-link svg, .menu-toggle svg { height: 16px; margin-right: 5px; vertical-align: -3px; width: 16px; }
             .back-link:hover, .source-link:hover { border-color: var(--accent); color: var(--accent); }
             .page-subtitle { color: var(--muted); margin: 0 0 8px; }
             .page-subtitle a { color: var(--accent); }
@@ -346,7 +346,7 @@
             <div class="eyebrow">Full library</div>
             <h1>UGS Files</h1>
           </div>
-          <a class="back-link" href="index.html">← Back to shelf</a>
+          <a class="back-link" href="index.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg> Back to shelf</a>
         </div>
         <p class="page-subtitle">Files from <a href="https://docs.google.com/document/d/1_FmH3BlSBQI7FGgAQL59-ZPe8eCxs35wel6JUyVaG8Q/" target="_blank" rel="nofollow">Ultimate Game Stash Google Doc</a></p>
         <div class="page-tools">
@@ -460,6 +460,7 @@ async function generateAllSections() {
         actions.className = "game-actions game-menu";
         const summary = document.createElement("summary");
         summary.textContent = "Actions";
+        summary.insertAdjacentHTML("afterbegin", '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>');
         summary.setAttribute("role", "button");
         summary.setAttribute("aria-label", `Actions for ${file}`);
         summary.className = "menu-toggle";

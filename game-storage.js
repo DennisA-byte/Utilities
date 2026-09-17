@@ -142,6 +142,8 @@ const GameLibrary = (() => {
       close: '<path d="m6 6 12 12M18 6 6 18"/>',
       dock: '<path d="M4 5h16v14H4z"/><path d="M4 15h16"/>',
       download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+      fullscreen: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5"/>',
+      menu: '<path d="M5 7h14M5 12h14M5 17h14"/>',
       minimize: '<path d="M5 12h14"/>',
       move: '<path d="M12 3v18M3 12h18"/><path d="m8 7 4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
       offline: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
@@ -168,16 +170,17 @@ const GameLibrary = (() => {
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:12px;padding:6px;position:fixed;top:12px;z-index:2147483647;font:14px Arial,sans-serif}
       #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
       #utilities-toolbar button:hover{background:#f0b35b;color:#201a12}
-      #utilities-toolbar .utilities-drag-region{cursor:move;height:28px;width:18px}
-      #utilities-toolbar .utilities-drag-region:after{content:"⋮⋮";color:#b9b4a7;font-size:16px;line-height:28px}
+      #utilities-toolbar .utilities-drag-region{align-items:center;cursor:move;display:flex;height:28px;justify-content:center;width:18px}
       #utilities-toolbar svg{height:18px;width:18px}
       #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
-      #utilities-toolbar .utilities-toolbar-status{color:#f0b35b;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      #utilities-toolbar .utilities-connection{color:#b9b4a7;font-size:11px;margin-left:4px}
+      #utilities-toolbar .utilities-toolbar-status,#utilities-toolbar .utilities-connection{align-items:center;display:inline-flex;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #utilities-toolbar .utilities-toolbar-status{color:#f0b35b}
+      #utilities-toolbar .utilities-connection{color:#b9b4a7}
+      #utilities-toolbar .utilities-toolbar-status:before,#utilities-toolbar .utilities-connection:before{background:#72d572;border-radius:50%;content:"";display:inline-flex;flex:0 0 8px;height:8px;margin-right:5px;width:8px}
+      #utilities-toolbar .utilities-toolbar-status:before{box-shadow:0 0 8px #72d572}
       #utilities-toolbar .utilities-saves{position:relative}
       #utilities-toolbar .utilities-saves summary{cursor:pointer;list-style:none;padding:7px 9px}
       #utilities-toolbar .utilities-saves summary::-webkit-details-marker{display:none}
-      #utilities-toolbar .utilities-saves summary:after{content:" ▾"}
       #utilities-toolbar .utilities-save-menu{background:#252b35;border:1px solid #424b58;border-radius:4px;display:grid;gap:4px;padding:5px;position:absolute;right:0;top:100%;z-index:2}
       #utilities-toolbar .utilities-save-menu button{font:12px Arial,sans-serif;height:auto;padding:8px 10px;white-space:nowrap;width:auto}
       #utilities-toolbar .utilities-toolbar-divider{background:#424b58;height:24px;margin:0 3px;width:1px}
@@ -187,10 +190,11 @@ const GameLibrary = (() => {
       #utilities-toolbar.pointer-hidden{display:none!important}
     </style>
     <div id="utilities-toolbar" role="toolbar" aria-label="Game controls">
-      <span class="utilities-drag-region" data-action="move" aria-label="Move toolbar" title="Drag toolbar"></span>
+      <span class="utilities-drag-region" data-action="move" aria-label="Move toolbar" title="Drag toolbar">${icon("move")}</span>
       <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
       <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
       <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
+      <button data-local-action="fullscreen" aria-label="Toggle fullscreen" title="Toggle fullscreen">${icon("fullscreen")}</button>
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
@@ -200,9 +204,9 @@ const GameLibrary = (() => {
       <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>
       <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
-      <details class="utilities-saves"><summary>Saves</summary><div class="utilities-save-menu"><button data-action="export">Export saves</button><button data-action="import">Import saves</button><button data-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
+      <details class="utilities-saves"><summary><span aria-hidden="true">${icon("menu")}</span> Saves</summary><div class="utilities-save-menu"><button data-action="export">Export saves</button><button data-action="import">Import saves</button><button data-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
-    ${actionScript}`;
+    ${actionScript}<script>document.getElementById("utilities-toolbar").addEventListener("click",function(event){var button=event.target.closest('button[data-local-action="fullscreen"]');if(!button)return;event.preventDefault();if(document.fullscreenElement)document.exitFullscreen();else if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen();});</script>`;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
   }
 
@@ -252,6 +256,7 @@ const GameLibrary = (() => {
       if (name === "close") return gameWindow.close();
       if (name === "dock") return toolbar.classList.toggle("docked");
       if (name === "minimize") return toolbar.classList.toggle("minimized");
+      if (name === "fullscreen") return gameWindow.document.fullscreenElement ? gameWindow.document.exitFullscreen() : gameWindow.document.documentElement.requestFullscreen();
       if (name === "refresh") return refreshGameWindow(gameWindow, file, toolbar.querySelector(".utilities-toolbar-title").textContent);
       if (name === "back") return gameWindow.location.href = new URL("index.html", window.location.href).href;
       if (name === "pin") { togglePinned(file); setStatus("Pinned"); return; }

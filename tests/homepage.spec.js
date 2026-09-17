@@ -80,6 +80,31 @@ test.describe("Utilities homepage", () => {
     await page.getByRole("button", { name: "Delete game" }).click();
     await expect(page.locator(".empty").filter({ hasText: "No my games yet." })).toBeVisible();
   });
+
+  test("shows the game toolbar fullscreen control and LED status", async ({ page }) => {
+    await page.goto("/index.html");
+    const browseLink = page.getByRole("link", { name: "Browse all games" });
+    expect(await browseLink.evaluate((element) => element.compareDocumentPosition(document.querySelector(".upload-button")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+
+    const popupPromise = page.waitForEvent("popup");
+    await page.locator("#upload-game").setInputFiles({
+      name: "toolbar-test.html",
+      mimeType: "text/html",
+      buffer: Buffer.from("<!doctype html><title>Toolbar test</title>"),
+    });
+    const gamePopup = await popupPromise;
+    await expect(gamePopup.locator("#utilities-toolbar")).toBeVisible();
+    await expect(gamePopup.getByRole("button", { name: "Toggle fullscreen" })).toBeVisible();
+    await expect(gamePopup.locator('[data-local-action="fullscreen"] svg')).toHaveCount(1);
+    await expect(gamePopup.locator(".utilities-drag-region svg")).toHaveCount(1);
+    await expect(gamePopup.locator(".utilities-saves summary svg")).toHaveCount(1);
+    const statusLed = await gamePopup.locator(".utilities-toolbar-status").evaluate((element) => getComputedStyle(element, "::before").boxShadow);
+    expect(statusLed).toContain("114, 213, 114");
+    await gamePopup.getByRole("button", { name: "Toggle fullscreen" }).click();
+    await expect.poll(() => gamePopup.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
+    await gamePopup.keyboard.press("Escape");
+    await gamePopup.close();
+  });
 });
 
 test("search hides nonmatching rows and their Actions controls", async ({ page }) => {
