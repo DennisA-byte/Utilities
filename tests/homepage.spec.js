@@ -185,7 +185,10 @@ test.describe("Utilities homepage", () => {
       page.waitForLoadState("domcontentloaded"),
       page.getByRole("button", { name: "Cache newest version" }).click(),
     ]);
-    await expect.poll(() => page.evaluate(() => localStorage.getItem("utilities-cached-version"))).toBe("<!doctype html><title>Cached Utilities</title>");
+    const cachedPage = await page.context().newPage();
+    await cachedPage.goto("/index.html");
+    expect(await cachedPage.evaluate(() => localStorage.getItem("utilities-cached-version"))).toBe("<!doctype html><title>Cached Utilities</title>");
+    await cachedPage.close();
     expect(await page.context().cookies()).toEqual([]);
   });
 });
