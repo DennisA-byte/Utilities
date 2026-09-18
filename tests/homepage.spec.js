@@ -111,7 +111,11 @@ test.describe("Utilities homepage", () => {
   test("shows the game toolbar fullscreen control and LED status", async ({ page }) => {
     await page.goto("/index.html");
     const browseLink = page.getByRole("link", { name: "Browse all games" });
+    const lastTab = page.getByRole("tab", { name: "My games" });
+    const uploadButton = page.locator(".upload-button");
     expect(await browseLink.evaluate((element) => element.compareDocumentPosition(document.querySelector(".upload-button")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+    expect(await browseLink.evaluate((element, tab) => element.getBoundingClientRect().left > tab.getBoundingClientRect().right, await lastTab.elementHandle())).toBe(true);
+    expect(await uploadButton.evaluate((element, browse) => element.getBoundingClientRect().left > browse.getBoundingClientRect().left, await browseLink.elementHandle())).toBe(true);
 
     const popupPromise = page.waitForEvent("popup");
     await page.locator("#upload-game").setInputFiles({
