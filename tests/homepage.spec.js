@@ -132,6 +132,8 @@ test.describe("Utilities homepage", () => {
     await expect(gamePopup.locator(".utilities-saves summary svg")).toHaveCount(1);
     const statusLed = await gamePopup.locator(".utilities-toolbar-status .utilities-status-led").evaluate((element) => getComputedStyle(element).boxShadow);
     expect(statusLed).toContain("114, 213, 114");
+    await expect(gamePopup.locator('[data-action="fullscreen"] svg')).toHaveCSS("width", "18px");
+    await expect(gamePopup.locator(".utilities-toolbar-status .utilities-status-led")).toHaveCSS("width", "10px");
     await gamePopup.getByRole("button", { name: "Toggle fullscreen" }).click();
     await expect.poll(() => gamePopup.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await gamePopup.keyboard.press("Escape");
