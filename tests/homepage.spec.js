@@ -2,9 +2,9 @@ const { test, expect } = require("@playwright/test");
 const { pathToFileURL } = require("node:url");
 
 test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => { window.__utilitiesRunningCommit = "a738cd6"; });
+  await context.addInitScript(() => { window.__utilitiesRunningCommit = "test-running"; });
   await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
-      await route.fulfill({ json: { sha: "a738cd6" } });
+      await route.fulfill({ json: { sha: "test-running" } });
   });
 });
 
@@ -28,6 +28,7 @@ test.describe("Utilities homepage", () => {
     await popup.waitForLoadState("domcontentloaded");
     expect(popup.url()).toMatch(/^blob:/);
     await expect(popup.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    await expect(popup.locator('meta[name="utilities-running-source"]')).toHaveCount(1);
     const libraryPopupPromise = popup.waitForEvent("popup");
     await popup.getByRole("link", { name: "Browse all games" }).click();
     const libraryPopup = await libraryPopupPromise;
@@ -126,7 +127,7 @@ test.describe("Utilities homepage", () => {
     const gamePopup = await popupPromise;
     await expect(gamePopup.locator("#utilities-toolbar")).toBeVisible();
     await expect(gamePopup.getByRole("button", { name: "Toggle fullscreen" })).toBeVisible();
-    await expect(gamePopup.locator('[data-local-action="fullscreen"] svg')).toHaveCount(1);
+    await expect(gamePopup.locator('[data-action="fullscreen"] svg')).toHaveCount(1);
     await expect(gamePopup.locator(".utilities-drag-region svg")).toHaveCount(1);
     await expect(gamePopup.locator(".utilities-saves summary svg")).toHaveCount(1);
     const statusLed = await gamePopup.locator(".utilities-toolbar-status .utilities-status-led").evaluate((element) => getComputedStyle(element).boxShadow);
@@ -159,6 +160,18 @@ test.describe("Utilities homepage", () => {
     await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" })).toHaveCount(0);
   });
 
+  test("records an update check per tab and schedules the next one for 24 hours", async ({ page }) => {
+    await page.goto("/index.html");
+    const firstCheck = await page.evaluate(() => Number(sessionStorage.getItem("utilities-last-update-check")));
+    expect(firstCheck).toBeGreaterThan(0);
+    const schedule = await page.evaluate(() => {
+      sessionStorage.setItem("utilities-last-update-check", String(Date.now() - (24 * 60 * 60 * 1000)));
+      window.UtilitiesNotifications.scheduleUpdateCheck();
+      return Number(sessionStorage.getItem("utilities-last-update-check"));
+    });
+    expect(schedule).toBeGreaterThan(firstCheck);
+  });
+
   test("caches newer HTML in local storage without adding cookies", async ({ page }) => {
     await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
       await route.fulfill({ json: { sha: "newer-cache-commit" } });
@@ -166,10 +179,12 @@ test.describe("Utilities homepage", () => {
     await page.route("https://dennisa-byte.github.io/Utilities/", async (route) => {
       await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Cached Utilities</title>" });
     });
-    await page.goto("/index.html");
     await page.context().addCookies([{ name: "utilities-cached-version-0", value: "legacy", domain: "127.0.0.1", path: "/" }]);
-    await page.reload();
-    await page.getByRole("button", { name: "Cache newest version" }).click();
+    await page.goto("/index.html");
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded"),
+      page.getByRole("button", { name: "Cache newest version" }).click(),
+    ]);
     await expect.poll(() => page.evaluate(() => localStorage.getItem("utilities-cached-version"))).toBe("<!doctype html><title>Cached Utilities</title>");
     expect(await page.context().cookies()).toEqual([]);
   });

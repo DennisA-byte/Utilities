@@ -168,15 +168,15 @@ const GameLibrary = (() => {
     const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');function send(name){if(window.opener)window.opener.postMessage({type:"utilities-toolbar-action",action:name},"*");}function cursorIsHidden(target){while(target&&target.nodeType===1){if(getComputedStyle(target).cursor==="none")return true;target=target.parentElement;}return getComputedStyle(document.documentElement).cursor==="none"||getComputedStyle(document.body).cursor==="none";}function updateToolbarVisibility(event){var hidden=!!document.pointerLockElement||cursorIsHidden(event&&event.target);toolbar.classList.toggle("pointer-hidden",hidden);}toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(!button)return;event.preventDefault();var name=button.dataset.action;if(name==="dock")toolbar.classList.toggle("docked");else if(name==="minimize")toolbar.classList.toggle("minimized");else if(name==="close")window.close();else send(name);});var moving=false,x=0,y=0;function stopMoving(){moving=false;}move.addEventListener("pointerdown",function(event){moving=true;move.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";event.preventDefault();});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}updateToolbarVisibility(event);});move.addEventListener("pointerup",stopMoving);move.addEventListener("pointercancel",stopMoving);move.addEventListener("lostpointercapture",stopMoving);window.addEventListener("pointerup",stopMoving);window.addEventListener("blur",stopMoving);document.addEventListener("pointermove",updateToolbarVisibility,true);document.addEventListener("mousemove",updateToolbarVisibility,true);document.addEventListener("pointerlockchange",function(){updateToolbarVisibility(null);});})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:12px;padding:6px;position:fixed;top:12px;z-index:2147483647;font:14px Arial,sans-serif}
-      #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;height:32px;justify-content:center;padding:6px;width:32px}
+      #utilities-toolbar button{align-items:center;background:transparent;border:1px solid transparent;border-radius:4px;color:inherit;cursor:pointer;display:flex;flex:0 0 32px;height:32px;justify-content:center;padding:6px;width:32px}
       #utilities-toolbar button:hover{background:#f0b35b;color:#201a12}
-      #utilities-toolbar .utilities-drag-region{align-items:center;cursor:move;display:flex;height:28px;justify-content:center;width:18px}
-      #utilities-toolbar svg{height:18px;width:18px}
-      #utilities-toolbar .utilities-toolbar-title{max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
+      #utilities-toolbar .utilities-drag-region{align-items:center;cursor:move;display:flex;flex:0 0 18px;height:28px;justify-content:center;width:18px}
+      #utilities-toolbar svg{display:block;height:18px;width:18px}
+      #utilities-toolbar .utilities-toolbar-title{flex:0 1 220px;max-width:220px;overflow:hidden;padding:0 8px;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status,#utilities-toolbar .utilities-connection{align-items:center;display:inline-flex;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status{color:#f0b35b}
       #utilities-toolbar .utilities-connection{color:#b9b4a7}
-      #utilities-toolbar .utilities-status-led{background:#72d572;border-radius:50%;box-shadow:0 0 8px #72d572;display:inline-flex;flex:0 0 8px;height:8px;margin-right:5px;width:8px}
+      #utilities-toolbar .utilities-status-led{background:#72d572;border-radius:50%;box-shadow:0 0 8px #72d572;display:inline-block;flex:0 0 8px;height:8px;margin-right:5px;width:8px}
       #utilities-toolbar .utilities-saves{position:relative}
       #utilities-toolbar .utilities-saves summary{cursor:pointer;list-style:none;padding:7px 9px}
       #utilities-toolbar .utilities-saves summary::-webkit-details-marker{display:none}
@@ -193,7 +193,7 @@ const GameLibrary = (() => {
       <button data-action="close" aria-label="Close game" title="Close game">${icon("close")}</button>
       <button data-action="dock" aria-label="Dock toolbar" title="Dock toolbar">${icon("dock")}</button>
       <button data-action="minimize" aria-label="Minimize to icon" title="Minimize to icon">${icon("minimize")}</button>
-      <button data-local-action="fullscreen" aria-label="Toggle fullscreen" title="Toggle fullscreen">${icon("fullscreen")}</button>
+      <button data-action="fullscreen" aria-label="Toggle fullscreen" title="Toggle fullscreen">${icon("fullscreen")}</button>
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
@@ -205,7 +205,7 @@ const GameLibrary = (() => {
       <button data-action="offline" aria-label="Save game offline" title="Save game offline">${icon("offline")}</button>
       <details class="utilities-saves"><summary><span aria-hidden="true">${icon("menu")}</span> Saves</summary><div class="utilities-save-menu"><button data-action="export">Export saves</button><button data-action="import">Import saves</button><button data-action="clear">Clear saves</button><input data-save-file type="file" accept="application/json" hidden></div></details>
     </div>
-    ${actionScript}<script>document.getElementById("utilities-toolbar").addEventListener("click",function(event){var button=event.target.closest('button[data-local-action="fullscreen"]');if(!button)return;event.preventDefault();if(document.fullscreenElement)document.exitFullscreen();else if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen();});</script>`;
+    ${actionScript.replace('else if(name==="close")window.close();else send(name);', 'else if(name==="close")window.close();else if(name==="fullscreen"){if(document.fullscreenElement)document.exitFullscreen();else if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen();}else send(name);')}`;
     return /<\/body>/i.test(text) ? text.replace(/<\/body>/i, `${toolbar}</body>`) : `${toolbar}${text}`;
   }
 

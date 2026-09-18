@@ -3,6 +3,9 @@
   const githubPagesUrl = "https://dennisa-byte.github.io/Utilities/";
   const cacheKey = "utilities-cached-version";
   const legacyCachePrefix = "utilities-cached-version";
+  const updateInterval = 24 * 60 * 60 * 1000;
+  const updateCheckKey = "utilities-last-update-check";
+  let updateDialogOpen = false;
   const loadedScript = document.currentScript;
   const loadedScriptUrl = loadedScript?.src || "";
 
@@ -119,10 +122,19 @@
     return response.json();
   }
 
+  function pageSourcePath() {
+    const path = window.location.pathname.toLowerCase();
+    return path.endsWith("allfiles.html") ? "AllFIles.html" : "index.html";
+  }
+
   async function fetchRunningSource() {
+    if (window.__utilitiesRunningPageSource) return window.__utilitiesRunningPageSource;
     if (window.__utilitiesRunningSource) return window.__utilitiesRunningSource;
-    if (!loadedScriptUrl) return "";
-    const response = await fetch(loadedScriptUrl, { cache: "no-store" });
+    const embeddedSource = document.querySelector('meta[name="utilities-running-source"]')?.content;
+    if (embeddedSource) return decodeURIComponent(escape(atob(embeddedSource)));
+    const sourceUrl = isDownloadContext() ? loadedScriptUrl : new URL(pageSourcePath(), window.location.href).href;
+    if (!sourceUrl) return "";
+    const response = await fetch(sourceUrl, { cache: "no-store" });
     if (!response.ok) return "";
     return response.text();
   }
@@ -131,11 +143,13 @@
     if (window.__utilitiesRunningCommit) return window.__utilitiesRunningCommit;
     const source = await fetchRunningSource();
     if (!source) return "";
-    const commitsResponse = await fetch(`https://api.github.com/repos/${repository}/commits?path=notifications.js&per_page=100`, { cache: "no-store" });
+    const hasEmbeddedPageSource = Boolean(window.__utilitiesRunningPageSource || window.__utilitiesRunningSource || document.querySelector('meta[name="utilities-running-source"]'));
+    const path = hasEmbeddedPageSource ? pageSourcePath() : "notifications.js";
+    const commitsResponse = await fetch(`https://api.github.com/repos/${repository}/commits?path=${path}&per_page=100`, { cache: "no-store" });
     if (!commitsResponse.ok) return "";
     const commits = await commitsResponse.json();
     for (const commit of commits) {
-      const response = await fetch(`https://raw.githubusercontent.com/${repository}/${commit.sha}/notifications.js`, { cache: "no-store" });
+      const response = await fetch(`https://raw.githubusercontent.com/${repository}/${commit.sha}/${path}`, { cache: "no-store" });
       if (response.ok && normalizeSource(await response.text()) === normalizeSource(source)) return commit.sha;
     }
     return "";
@@ -159,6 +173,8 @@
   }
 
   function showUpdate(latest) {
+    if (updateDialogOpen) return;
+    updateDialogOpen = true;
     const buttons = [];
     if (isDownloadContext()) {
       buttons.push({ label: "Download newer version", primary: true, onClick: downloadNewestVersion });
@@ -181,16 +197,26 @@
     }
   }
 
+  function scheduleUpdateCheck() {
+    const checkedAt = Number(sessionStorage.getItem(updateCheckKey) || 0);
+    const elapsed = Date.now() - checkedAt;
+    if (elapsed >= updateInterval) {
+      sessionStorage.setItem(updateCheckKey, String(Date.now()));
+      checkForUpdates();
+    }
+    window.setTimeout(scheduleUpdateCheck, Math.max(updateInterval - Math.max(elapsed, 0), 1000));
+  }
+
   function addStyles() {
     const style = document.createElement("style");
     style.textContent = ".utility-notification{background:#252b35;border:1px solid #424b58;border-radius:6px;color:#f6f2e8;max-width:min(460px,calc(100% - 32px));padding:24px;width:100%}.utility-notification::backdrop{background:#0b0e12b8}.utility-notification h2{font:700 24px Georgia,serif;margin:0 0 8px}.utility-notification p{color:#b9b4a7;font:16px/1.5 Georgia,serif;margin:0 0 20px}.notification-actions{display:flex;flex-wrap:wrap;gap:8px}.notification-actions button{background:transparent;border:1px solid #424b58;border-radius:4px;color:#f6f2e8;cursor:pointer;font:700 13px Arial,sans-serif;padding:10px 12px}.notification-actions button:hover{border-color:#f0b35b}.notification-actions .notification-primary{background:#f0b35b;border-color:#f0b35b;color:#201a12}.utility-notification-warning{border-color:#f0c75e}.utility-notification-error{border-color:#d57272}";
     document.head.appendChild(style);
   }
 
-  window.UtilitiesNotifications = { error: (title, options) => bodyNotification("error", title, options), info: (title, options) => bodyNotification("info", title, options), warning: (title, options) => bodyNotification("warning", title, options), checkForUpdates, show: bodyNotification };
+  window.UtilitiesNotifications = { error: (title, options) => bodyNotification("error", title, options), info: (title, options) => bodyNotification("info", title, options), warning: (title, options) => bodyNotification("warning", title, options), checkForUpdates, scheduleUpdateCheck, show: bodyNotification };
   clearLegacyCacheCookies();
   if (useCachedVersion()) return;
   finishCachedBoot();
   addStyles();
-  window.addEventListener("DOMContentLoaded", () => checkForUpdates(), { once: true });
+  window.addEventListener("DOMContentLoaded", scheduleUpdateCheck, { once: true });
 })();
