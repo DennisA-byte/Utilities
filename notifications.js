@@ -1,7 +1,7 @@
 (function () {
   const repository = "DennisA-byte/Utilities";
   const githubPagesUrl = "https://dennisa-byte.github.io/Utilities/";
-  const currentCommit = "7380fb1";
+  const currentCommit = "e737cba";
   const cachePrefix = "utilities-cached-version";
   const cacheMarker = "utilities-cache-booting";
 

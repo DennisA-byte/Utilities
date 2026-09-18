@@ -3,7 +3,7 @@ const { pathToFileURL } = require("node:url");
 
 test.beforeEach(async ({ context }) => {
   await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
-      await route.fulfill({ json: { sha: "7380fb1" } });
+      await route.fulfill({ json: { sha: "e737cba" } });
   });
 });
 
