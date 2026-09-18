@@ -176,8 +176,7 @@ const GameLibrary = (() => {
       #utilities-toolbar .utilities-toolbar-status,#utilities-toolbar .utilities-connection{align-items:center;display:inline-flex;font-size:11px;margin-left:4px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #utilities-toolbar .utilities-toolbar-status{color:#f0b35b}
       #utilities-toolbar .utilities-connection{color:#b9b4a7}
-      #utilities-toolbar .utilities-toolbar-status:before,#utilities-toolbar .utilities-connection:before{background:#72d572;border-radius:50%;content:"";display:inline-flex;flex:0 0 8px;height:8px;margin-right:5px;width:8px}
-      #utilities-toolbar .utilities-toolbar-status:before{box-shadow:0 0 8px #72d572}
+      #utilities-toolbar .utilities-status-led{background:#72d572;border-radius:50%;box-shadow:0 0 8px #72d572;display:inline-flex;flex:0 0 8px;height:8px;margin-right:5px;width:8px}
       #utilities-toolbar .utilities-saves{position:relative}
       #utilities-toolbar .utilities-saves summary{cursor:pointer;list-style:none;padding:7px 9px}
       #utilities-toolbar .utilities-saves summary::-webkit-details-marker{display:none}
@@ -198,8 +197,8 @@ const GameLibrary = (() => {
       <button data-action="refresh" aria-label="Refresh game" title="Refresh game">${icon("refresh")}</button>
       <span class="utilities-toolbar-divider"></span>
       <span class="utilities-toolbar-title" title="${safeTitle}">${safeTitle}</span>
-      <span class="utilities-toolbar-status" data-status>Playing</span>
-      <span class="utilities-connection" data-connection>${connectionLabel()}</span>
+      <span class="utilities-toolbar-status" data-status><span class="utilities-status-led" aria-hidden="true"></span><span data-status-label>Playing</span></span>
+      <span class="utilities-connection" data-connection><span class="utilities-status-led" aria-hidden="true"></span><span data-connection-label>${connectionLabel()}</span></span>
       <button data-action="back" aria-label="Back to homepage" title="Back to homepage">${icon("back")}</button>
       <button data-action="pin" aria-label="Pin game" title="Pin game">${icon("pin")}</button>
       <button data-action="download" aria-label="Download game" title="Download game">${icon("download")}</button>

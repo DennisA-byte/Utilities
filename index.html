@@ -107,6 +107,7 @@
 		</section>
 	</main>
 	<script src="game-storage.js"></script>
+	<script src="notifications.js"></script>
 	<script>
 		const gamePanel = document.getElementById("game-panel");
 		const status = document.getElementById("status");
@@ -133,13 +134,15 @@
 				if (!response.ok) throw new Error(`Could not read ${path}`);
 				return response.text();
 			});
-			const [indexSource, allFilesSource, filesSource, storageSource] = await Promise.all([
-				responseFor("index.html"), responseFor("AllFIles.html"), responseFor("files.js"), responseFor("game-storage.js"),
+			const [indexSource, allFilesSource, filesSource, storageSource, notificationsSource] = await Promise.all([
+				responseFor("index.html"), responseFor("AllFIles.html"), responseFor("files.js"), responseFor("game-storage.js"), responseFor("notifications.js"),
 			]);
 			let compiledLibrary = inlineScript(allFilesSource, "files.js", filesSource);
 			compiledLibrary = inlineScript(compiledLibrary, "game-storage.js", storageSource);
+			compiledLibrary = inlineScript(compiledLibrary, "notifications.js", notificationsSource);
 			compiledLibrary = compiledLibrary.replace('href="index.html"', 'href="javascript:history.back()"');
 			let compiledApp = inlineScript(indexSource, "game-storage.js", storageSource);
+			compiledApp = inlineScript(compiledApp, "notifications.js", notificationsSource);
 			const libraryPayload = btoa(unescape(encodeURIComponent(compiledLibrary)));
 			const libraryScript = `<script>const embeddedLibrary = "${libraryPayload}";function openEmbeddedLibrary(event){event.preventDefault();const popup=window.open("about:blank","_blank");if(!popup){document.getElementById("status").textContent="Allow pop-ups to browse all games.";return false;}popup.document.open();popup.document.write(decodeURIComponent(escape(atob(embeddedLibrary))));popup.document.close();return false;}</` + "script>";
 			compiledApp = compiledApp.replace('href="AllFIles.html"', 'href="#embedded-library" onclick="return openEmbeddedLibrary(event)"');

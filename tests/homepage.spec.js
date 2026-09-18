@@ -1,6 +1,12 @@
 const { test, expect } = require("@playwright/test");
 const { pathToFileURL } = require("node:url");
 
+test.beforeEach(async ({ page }) => {
+  await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
+    await route.fulfill({ json: { sha: "3528ec5" } });
+  });
+});
+
 test.describe("Utilities homepage", () => {
   test("opens the compiled app as a data URL", async ({ page }) => {
     await page.route("**/AllFIles.html", async (route) => {
@@ -98,12 +104,27 @@ test.describe("Utilities homepage", () => {
     await expect(gamePopup.locator('[data-local-action="fullscreen"] svg')).toHaveCount(1);
     await expect(gamePopup.locator(".utilities-drag-region svg")).toHaveCount(1);
     await expect(gamePopup.locator(".utilities-saves summary svg")).toHaveCount(1);
-    const statusLed = await gamePopup.locator(".utilities-toolbar-status").evaluate((element) => getComputedStyle(element, "::before").boxShadow);
+    const statusLed = await gamePopup.locator(".utilities-toolbar-status .utilities-status-led").evaluate((element) => getComputedStyle(element).boxShadow);
     expect(statusLed).toContain("114, 213, 114");
     await gamePopup.getByRole("button", { name: "Toggle fullscreen" }).click();
     await expect.poll(() => gamePopup.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await gamePopup.keyboard.press("Escape");
     await gamePopup.close();
+  });
+
+  test("shows configurable notification dialogs and website update actions", async ({ page }) => {
+    await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
+      await route.fulfill({ json: { sha: "newer-commit", commit: { message: "New version" } } });
+    });
+    await page.goto("/index.html");
+    await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh page" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cache newest version" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open GitHub Pages" })).toHaveAttribute("href", "https://dennisa-byte.github.io/Utilities/");
+    await page.evaluate(() => window.UtilitiesNotifications.warning("Warning", { message: "Check this", closable: false, buttons: [{ label: "Acknowledge" }] }));
+    await expect(page.getByRole("dialog", { name: "Warning" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Acknowledge" })).toBeVisible();
   });
 });
 
