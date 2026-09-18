@@ -138,6 +138,21 @@ test.describe("Utilities homepage", () => {
     await gamePopup.close();
   });
 
+  test("replaces legacy game toolbars with the current controls", async ({ page }) => {
+    await page.goto("/index.html");
+    const popupPromise = page.waitForEvent("popup");
+    await page.locator("#upload-game").setInputFiles({
+      name: "legacy-toolbar.html",
+      mimeType: "text/html",
+      buffer: Buffer.from("<!doctype html><style>#utilities-toolbar{color:red}</style><div id=utilities-toolbar>Old toolbar</div><script>document.getElementById('utilities-toolbar')</script><title>Legacy</title>"),
+    });
+    const gamePopup = await popupPromise;
+    await expect(gamePopup.locator("#utilities-toolbar")).toHaveCount(1);
+    await expect(gamePopup.getByRole("button", { name: "Toggle fullscreen" })).toBeVisible();
+    await expect(gamePopup.locator(".utilities-toolbar-status .utilities-status-led")).toBeVisible();
+    await gamePopup.close();
+  });
+
   test("shows configurable notification dialogs and website update actions", async ({ page }) => {
     await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
       await route.fulfill({ json: { sha: "newer-commit", commit: { message: "New version" } } });

@@ -177,8 +177,18 @@ const GameLibrary = (() => {
     }[character]));
   }
 
+  function removeLegacyToolbar(text) {
+    const parsed = new DOMParser().parseFromString(text, "text/html");
+    parsed.querySelectorAll("#utilities-toolbar").forEach((toolbar) => toolbar.remove());
+    parsed.querySelectorAll("style, script").forEach((element) => {
+      if (element.textContent.includes("utilities-toolbar")) element.remove();
+    });
+    return parsed.documentElement.outerHTML;
+  }
+
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
+    text = removeLegacyToolbar(text);
     const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');function send(name){if(window.opener)window.opener.postMessage({type:"utilities-toolbar-action",action:name},"*");}function cursorIsHidden(target){while(target&&target.nodeType===1){if(getComputedStyle(target).cursor==="none")return true;target=target.parentElement;}return getComputedStyle(document.documentElement).cursor==="none"||getComputedStyle(document.body).cursor==="none";}function updateToolbarVisibility(event){var hidden=!!document.pointerLockElement||cursorIsHidden(event&&event.target);toolbar.classList.toggle("pointer-hidden",hidden);}toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(!button)return;event.preventDefault();var name=button.dataset.action;if(name==="dock")toolbar.classList.toggle("docked");else if(name==="minimize")toolbar.classList.toggle("minimized");else if(name==="close")window.close();else send(name);});var moving=false,x=0,y=0;function stopMoving(){moving=false;}move.addEventListener("pointerdown",function(event){moving=true;move.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";event.preventDefault();});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}updateToolbarVisibility(event);});move.addEventListener("pointerup",stopMoving);move.addEventListener("pointercancel",stopMoving);move.addEventListener("lostpointercapture",stopMoving);window.addEventListener("pointerup",stopMoving);window.addEventListener("blur",stopMoving);document.addEventListener("pointermove",updateToolbarVisibility,true);document.addEventListener("mousemove",updateToolbarVisibility,true);document.addEventListener("pointerlockchange",function(){updateToolbarVisibility(null);});})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center;background:#252b35;border:1px solid #424b58;border-radius:6px;box-shadow:0 8px 24px #0008;color:#f6f2e8;display:flex;gap:4px;left:12px;padding:6px;position:fixed;top:12px;z-index:2147483647;font:14px Arial,sans-serif}
