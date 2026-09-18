@@ -155,6 +155,31 @@ test.describe("Utilities homepage", () => {
     await expect(warning.getByRole("link", { name: "Open GitHub Pages" })).toBeVisible();
   });
 
+  test("asks how to handle changed offline games and moves old copies to My games", async ({ page }) => {
+    const oldGame = "<!doctype html><title>Old offline game</title><p>old</p>";
+    const newGame = "<!doctype html><title>New offline game</title><p>new</p>";
+    let latestGame = oldGame;
+    await page.route("**/UGS-Files/test-offline.html*", async (route) => {
+      await route.fulfill({ status: 200, contentType: "text/html", body: latestGame });
+    });
+    await page.goto("/index.html");
+    await page.evaluate(async (text) => GameLibrary.saveGame("test-offline.html", text, { title: "Test offline game", source: "library" }), oldGame);
+    latestGame = newGame;
+    await page.evaluate(() => sessionStorage.setItem("utilities-last-update-check", String(Date.now() - (24 * 60 * 60 * 1000))));
+    await page.reload();
+
+    const updateDialog = page.getByRole("dialog", { name: "Offline game updates available" });
+    await expect(updateDialog).toBeVisible();
+    await expect(updateDialog.getByRole("combobox", { name: "Update choice for Test offline game" })).toBeVisible();
+    await expect(updateDialog.getByRole("button", { name: "Yes to all" })).toBeVisible();
+    await expect(updateDialog.getByRole("button", { name: "No to all" })).toBeVisible();
+    await updateDialog.getByRole("button", { name: "Check all don't ask again", exact: true }).click();
+    await updateDialog.getByRole("combobox", { name: "Update choice for Test offline game" }).selectOption("move");
+    await updateDialog.getByRole("button", { name: "Apply choices" }).click();
+    await page.getByRole("tab", { name: "My games" }).click();
+    await expect(page.getByText("Test offline game (old version)", { exact: true })).toBeVisible();
+  });
+
   test("does not show an update notification for the running commit", async ({ page }) => {
     await page.goto("/index.html");
     await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" })).toHaveCount(0);

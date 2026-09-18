@@ -9,6 +9,12 @@ const GameLibrary = (() => {
     return file.includes(".") && file.lastIndexOf(".") > 0 ? file : `${file}.html`;
   }
 
+  async function hashText(text) {
+    const bytes = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
   function openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(databaseName, 1);
@@ -38,6 +44,7 @@ const GameLibrary = (() => {
 
   async function saveGame(file, text, metadata = {}) {
     const database = await openDatabase();
+    const contentHash = metadata.contentHash || await hashText(text);
     return new Promise((resolve, reject) => {
       const request = database.transaction(storeName, "readwrite").objectStore(storeName).put({
         file,
@@ -45,6 +52,7 @@ const GameLibrary = (() => {
         title: metadata.title || file,
         source: metadata.source || "library",
         savedAt: metadata.savedAt || Date.now(),
+        contentHash,
       });
       request.onsuccess = resolve;
       request.onerror = () => reject(request.error);
@@ -132,6 +140,12 @@ const GameLibrary = (() => {
     const saved = await getSaved(file);
     if (saved !== null) return saved;
     const response = await fetch(`${gameUrl(file)}?t=${Date.now()}`);
+    if (!response.ok) throw new Error(`Could not load ${file}`);
+    return response.text();
+  }
+
+  async function getLatestGame(file) {
+    const response = await fetch(`${gameUrl(file)}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`Could not load ${file}`);
     return response.text();
   }
@@ -320,6 +334,12 @@ const GameLibrary = (() => {
     return getSavedRecord(file);
   }
 
+  async function moveOldCopyToMyGames(record) {
+    const oldFile = `${record.file} (old ${new Date().toISOString().replace(/[:.]/g, "-")})`;
+    await saveGame(oldFile, record.text, { title: `${record.title || record.file} (old version)`, source: "upload" });
+    return oldFile;
+  }
+
   async function exportData() {
     const database = await getSavedGames();
     const local = {};
@@ -380,7 +400,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, clearData, connectionLabel, download, getGame, getPinned, getRecent, getSavedGames, getStatus, icon, importData, importGame, installToolbar, isPinned, normalizeFileName, play, recordRecent, removeGame, renameGame, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
+  return { buildGameDocument, clearData, connectionLabel, download, getGame, getLatestGame, getPinned, getRecent, getSavedGames, getStatus, hashText, icon, importData, importGame, installToolbar, isPinned, moveOldCopyToMyGames, normalizeFileName, play, recordRecent, removeGame, renameGame, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
 })();
 
 window.GameLibrary = GameLibrary;

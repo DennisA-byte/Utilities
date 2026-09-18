@@ -5,6 +5,7 @@
   const legacyCachePrefix = "utilities-cached-version";
   const updateInterval = 24 * 60 * 60 * 1000;
   const updateCheckKey = "utilities-last-update-check";
+  const offlinePreferenceKey = "utilities-offline-update-preferences";
   let updateDialogOpen = false;
   const loadedScript = document.currentScript;
   const loadedScriptUrl = loadedScript?.src || "";
@@ -41,6 +42,97 @@
   function clearLegacyCacheCookies() {
     const names = document.cookie.split("; ").map((entry) => entry.split("=", 1)[0]).filter((name) => name.startsWith(legacyCachePrefix));
     names.forEach((name) => { document.cookie = `${name}=;path=/;max-age=0;SameSite=Lax`; });
+  }
+
+  function readOfflinePreferences() {
+    try { return JSON.parse(localStorage.getItem(offlinePreferenceKey) || "{}"); } catch (error) { return {}; }
+  }
+
+  function saveOfflinePreferences(preferences) {
+    localStorage.setItem(offlinePreferenceKey, JSON.stringify(preferences));
+  }
+
+  async function applyOfflineDecision(change, decision) {
+    if (decision === "keep") return;
+    if (decision === "move") await GameLibrary.moveOldCopyToMyGames(change.record);
+    await GameLibrary.saveGame(change.file, change.latestText, { title: change.record.title || change.file, source: "library", contentHash: change.latestHash });
+  }
+
+  function showOfflineUpdates(changes) {
+    if (!changes.length || updateDialogOpen) return;
+    updateDialogOpen = true;
+    const dialog = document.createElement("dialog");
+    dialog.className = "utility-notification utility-offline-updates";
+    const heading = document.createElement("h2");
+    heading.id = `offline-update-title-${Date.now()}`;
+    dialog.setAttribute("aria-labelledby", heading.id);
+    heading.textContent = "Offline game updates available";
+    const message = document.createElement("p");
+    message.textContent = "Choose what to do with each updated offline game.";
+    const rows = document.createElement("div");
+    rows.className = "offline-update-list";
+    const preferenceState = readOfflinePreferences();
+    changes.forEach((change) => {
+      const row = document.createElement("label");
+      row.className = "offline-update-row";
+      row.dataset.file = change.file;
+      const name = document.createElement("strong");
+      name.textContent = change.record.title || change.file;
+      const choice = document.createElement("select");
+      choice.setAttribute("aria-label", `Update choice for ${change.record.title || change.file}`);
+      [["update", "Update offline copy"], ["keep", "Do not update"], ["move", "Move old copy to My games and update"]].forEach(([value, label]) => {
+        const option = document.createElement("option"); option.value = value; option.textContent = label; choice.appendChild(option);
+      });
+      const remember = document.createElement("input");
+      remember.type = "checkbox";
+      remember.className = "offline-update-remember";
+      remember.setAttribute("aria-label", `Do not ask again for ${change.record.title || change.file}`);
+      row.append(name, choice, remember);
+      rows.appendChild(row);
+    });
+    const actions = document.createElement("div");
+    actions.className = "notification-actions offline-update-actions";
+    const close = () => { dialog.close(); dialog.remove(); updateDialogOpen = false; };
+    const setAll = (value) => rows.querySelectorAll("select").forEach((select) => { select.value = value; });
+    const addAction = (label, handler, primary = false) => { const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.className = primary ? "notification-primary" : ""; button.addEventListener("click", handler); actions.appendChild(button); };
+    addAction("Yes to all", () => setAll("update"));
+    addAction("No to all", () => setAll("keep"));
+    addAction("Check all don't ask again", () => rows.querySelectorAll(".offline-update-remember").forEach((input) => { input.checked = true; }));
+    addAction("Uncheck all don't ask again", () => rows.querySelectorAll(".offline-update-remember").forEach((input) => { input.checked = false; }));
+    addAction("Apply choices", async () => {
+      const nextPreferences = { ...preferenceState };
+      for (const change of changes) {
+        const row = rows.querySelector(`[data-file="${CSS.escape(change.file)}"]`);
+        const decision = row.querySelector("select").value;
+        if (row.querySelector(".offline-update-remember").checked) nextPreferences[change.file] = decision;
+        await applyOfflineDecision(change, decision);
+      }
+      saveOfflinePreferences(nextPreferences);
+      close();
+    }, true);
+    addAction("Close", close);
+    dialog.append(heading, message, rows, actions);
+    document.body.appendChild(dialog);
+    dialog.addEventListener("cancel", close);
+    dialog.showModal();
+  }
+
+  async function checkForOfflineUpdates() {
+    if (typeof GameLibrary === "undefined") return;
+    const savedGames = (await GameLibrary.getSavedGames()).filter((record) => record.source !== "upload" && record.contentHash);
+    const preferences = readOfflinePreferences();
+    const changes = [];
+    for (const record of savedGames) {
+      try {
+        const latestText = await GameLibrary.getLatestGame(record.file);
+        const latestHash = await GameLibrary.hashText(latestText);
+        if (latestHash === record.contentHash) continue;
+        const remembered = preferences[record.file];
+        if (remembered) await applyOfflineDecision({ file: record.file, record, latestText, latestHash }, remembered);
+        else changes.push({ file: record.file, record, latestText, latestHash });
+      } catch (error) { /* A missing remote game should not block other update prompts. */ }
+    }
+    showOfflineUpdates(changes);
   }
 
   function useCachedVersion() {
@@ -192,6 +284,7 @@
     try {
       const [latest, runningCommit] = await Promise.all([fetchLatestCommit(), findRunningCommit()]);
       if (latest.sha && runningCommit && latest.sha !== runningCommit) showUpdate(latest);
+      await checkForOfflineUpdates();
     } catch (error) {
       bodyNotification("warning", "Update check unavailable", { message: "Utilities could not check GitHub for a newer version." });
     }
@@ -209,7 +302,7 @@
 
   function addStyles() {
     const style = document.createElement("style");
-    style.textContent = ".utility-notification{background:#252b35;border:1px solid #424b58;border-radius:6px;color:#f6f2e8;max-width:min(460px,calc(100% - 32px));padding:24px;width:100%}.utility-notification::backdrop{background:#0b0e12b8}.utility-notification h2{font:700 24px Georgia,serif;margin:0 0 8px}.utility-notification p{color:#b9b4a7;font:16px/1.5 Georgia,serif;margin:0 0 20px}.notification-actions{display:flex;flex-wrap:wrap;gap:8px}.notification-actions button{background:transparent;border:1px solid #424b58;border-radius:4px;color:#f6f2e8;cursor:pointer;font:700 13px Arial,sans-serif;padding:10px 12px}.notification-actions button:hover{border-color:#f0b35b}.notification-actions .notification-primary{background:#f0b35b;border-color:#f0b35b;color:#201a12}.utility-notification-warning{border-color:#f0c75e}.utility-notification-error{border-color:#d57272}";
+    style.textContent = ".utility-notification{background:#252b35;border:1px solid #424b58;border-radius:6px;color:#f6f2e8;max-width:min(600px,calc(100% - 32px));padding:24px;width:100%}.utility-notification::backdrop{background:#0b0e12b8}.utility-notification h2{font:700 24px Georgia,serif;margin:0 0 8px}.utility-notification p{color:#b9b4a7;font:16px/1.5 Georgia,serif;margin:0 0 20px}.notification-actions{display:flex;flex-wrap:wrap;gap:8px}.notification-actions button{background:transparent;border:1px solid #424b58;border-radius:4px;color:#f6f2e8;cursor:pointer;font:700 13px Arial,sans-serif;padding:10px 12px}.notification-actions button:hover{border-color:#f0b35b}.notification-actions .notification-primary{background:#f0b35b;border-color:#f0b35b;color:#201a12}.utility-notification-warning{border-color:#f0c75e}.utility-notification-error{border-color:#d57272}.offline-update-list{display:grid;gap:10px;margin:16px 0}.offline-update-row{align-items:center;border-top:1px solid #424b58;display:grid;gap:8px;grid-template-columns:minmax(100px,1fr) minmax(150px,1.5fr) auto;padding:10px 0}.offline-update-row select{background:#1d2229;border:1px solid #424b58;border-radius:4px;color:#f6f2e8;padding:8px}.offline-update-row input{height:18px;width:18px}.offline-update-actions{border-top:1px solid #424b58;padding-top:14px}";
     document.head.appendChild(style);
   }
 
