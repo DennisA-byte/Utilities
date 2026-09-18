@@ -1,5 +1,5 @@
 # Utilities
-[![Playwright tests](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml/badge.svg)](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml)
+[![Playwright tests](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml/badge.svg)](https://github.com/DennisA-byte/Utilities/actions/workflows/playwright.yml) [![CodeQL](https://github.com/DennisA-byte/Utilities/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/DennisA-byte/Utilities/actions/workflows/github-code-scanning/codeql)
 
 ## How to run
 ### Run locally
