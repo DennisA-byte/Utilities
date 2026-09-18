@@ -1,7 +1,7 @@
 (function () {
   const repository = "DennisA-byte/Utilities";
   const githubPagesUrl = "https://dennisa-byte.github.io/Utilities/";
-  const currentCommit = "3528ec5";
+  const currentCommit = "7380fb1";
   const cachePrefix = "utilities-cached-version";
   const cacheMarker = "utilities-cache-booting";
 
@@ -95,6 +95,7 @@
       dialog.remove();
     };
     (options.buttons || []).forEach((button) => actions.appendChild(makeButton(button, close)));
+    if (!pageIsGithubPages()) actions.appendChild(makeButton({ label: "Open GitHub Pages", href: githubPagesUrl, close: false }, close));
     if (options.closable !== false) {
       const closeButton = document.createElement("button");
       closeButton.type = "button";
@@ -141,7 +142,6 @@
       buttons.push({ label: "Refresh page", primary: true, onClick: () => window.location.reload() });
     }
     if (!pageIsGithubPages()) buttons.push({ label: "Cache newest version", onClick: cacheNewestVersion });
-    if (!pageIsGithubPages()) buttons.push({ label: "Open GitHub Pages", href: githubPagesUrl, close: false });
     bodyNotification("info", "A newer Utilities version is available", {
       message: `Main is now at ${latest.sha.slice(0, 7)}.`,
       buttons,

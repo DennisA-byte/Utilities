@@ -1,9 +1,9 @@
 const { test, expect } = require("@playwright/test");
 const { pathToFileURL } = require("node:url");
 
-test.beforeEach(async ({ page }) => {
-  await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
-    await route.fulfill({ json: { sha: "3528ec5" } });
+test.beforeEach(async ({ context }) => {
+  await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
+      await route.fulfill({ json: { sha: "7380fb1" } });
   });
 });
 
@@ -55,6 +55,26 @@ test.describe("Utilities homepage", () => {
     await expect(libraryPopup.getByRole("heading", { name: "UGS Files" })).toBeVisible();
     await libraryPopup.close();
     await compiledPage.close();
+  });
+
+  test("offers a download for newer versions opened from a file URL", async ({ page }, testInfo) => {
+    await page.goto("/index.html");
+    await page.getByRole("button", { name: "Source & tools" }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download compiled app" }).click();
+    const download = await downloadPromise;
+    const compiledPath = testInfo.outputPath("utilities-update-test.html");
+    await download.saveAs(compiledPath);
+
+    const filePage = await page.context().newPage();
+    await filePage.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
+      await route.fulfill({ json: { sha: "newer-file-commit" } });
+    });
+    await filePage.goto(pathToFileURL(compiledPath).href);
+    await expect(filePage.getByRole("dialog", { name: "A newer Utilities version is available" })).toBeVisible();
+    await expect(filePage.getByRole("button", { name: "Download newer version" })).toBeVisible();
+    await expect(filePage.getByRole("button", { name: "Refresh page" })).toHaveCount(0);
+    await filePage.close();
   });
 
   test("disables source tools while offline", async ({ page, context }) => {
@@ -120,11 +140,13 @@ test.describe("Utilities homepage", () => {
     await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh page" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cache newest version" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open GitHub Pages" })).toHaveAttribute("href", "https://dennisa-byte.github.io/Utilities/");
+    await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" }).getByRole("link", { name: "Open GitHub Pages" })).toHaveAttribute("href", "https://dennisa-byte.github.io/Utilities/");
     await page.evaluate(() => window.UtilitiesNotifications.warning("Warning", { message: "Check this", closable: false, buttons: [{ label: "Acknowledge" }] }));
     await expect(page.getByRole("dialog", { name: "Warning" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Close" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Acknowledge" })).toBeVisible();
+    const warning = page.getByRole("dialog", { name: "Warning" });
+    await expect(warning.getByRole("button", { name: "Close" })).toHaveCount(0);
+    await expect(warning.getByRole("button", { name: "Acknowledge" })).toBeVisible();
+    await expect(warning.getByRole("link", { name: "Open GitHub Pages" })).toBeVisible();
   });
 });
 
