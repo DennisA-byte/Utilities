@@ -121,7 +121,7 @@
 		function inlineScript(html, source, contents) {
 			const encoded = btoa(unescape(encodeURIComponent(contents)));
 			const closingScript = "<" + "/script>";
-			const bootstrap = `<script>eval(decodeURIComponent(escape(atob("${encoded}"))))${closingScript}`;
+			const bootstrap = `<script>window.__utilitiesRunningSource=decodeURIComponent(escape(atob("${encoded}")));eval(window.__utilitiesRunningSource)${closingScript}`;
 			return html.replace(`<script src="${source}">${closingScript}`, bootstrap);
 		}
 

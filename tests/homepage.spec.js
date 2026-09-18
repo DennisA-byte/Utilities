@@ -2,8 +2,9 @@ const { test, expect } = require("@playwright/test");
 const { pathToFileURL } = require("node:url");
 
 test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => { window.__utilitiesRunningCommit = "a738cd6"; });
   await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
-      await route.fulfill({ json: { sha: "e737cba" } });
+      await route.fulfill({ json: { sha: "a738cd6" } });
   });
 });
 
@@ -147,6 +148,26 @@ test.describe("Utilities homepage", () => {
     await expect(warning.getByRole("button", { name: "Close" })).toHaveCount(0);
     await expect(warning.getByRole("button", { name: "Acknowledge" })).toBeVisible();
     await expect(warning.getByRole("link", { name: "Open GitHub Pages" })).toBeVisible();
+  });
+
+  test("does not show an update notification for the running commit", async ({ page }) => {
+    await page.goto("/index.html");
+    await expect(page.getByRole("dialog", { name: "A newer Utilities version is available" })).toHaveCount(0);
+  });
+
+  test("caches newer HTML in local storage without adding cookies", async ({ page }) => {
+    await page.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
+      await route.fulfill({ json: { sha: "newer-cache-commit" } });
+    });
+    await page.route("https://dennisa-byte.github.io/Utilities/", async (route) => {
+      await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Cached Utilities</title>" });
+    });
+    await page.goto("/index.html");
+    await page.context().addCookies([{ name: "utilities-cached-version-0", value: "legacy", domain: "127.0.0.1", path: "/" }]);
+    await page.reload();
+    await page.getByRole("button", { name: "Cache newest version" }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("utilities-cached-version"))).toBe("<!doctype html><title>Cached Utilities</title>");
+    expect(await page.context().cookies()).toEqual([]);
   });
 });
 

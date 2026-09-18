@@ -1,8 +1,14 @@
 (function () {
   const repository = "DennisA-byte/Utilities";
   const githubPagesUrl = "https://dennisa-byte.github.io/Utilities/";
-  const currentCommit = "e737cba";
-  const cachePrefix = "utilities-cached-version";
+  const cacheKey = "utilities-cached-version";
+  const legacyCachePrefix = "utilities-cached-version";
+  const loadedScript = document.currentScript;
+  const loadedScriptUrl = loadedScript?.src || "";
+
+  function normalizeSource(source) {
+    return source.replace(/\r\n/g, "\n").trim();
+  }
   const cacheMarker = "utilities-cache-booting";
 
   function pageIsGithubPages() {
@@ -17,25 +23,21 @@
     return ["file:", "data:", "about:"].includes(window.location.protocol);
   }
 
-  function readCookie(name) {
-    const item = document.cookie.split("; ").find((entry) => entry.startsWith(`${name}=`));
-    return item ? decodeURIComponent(item.slice(name.length + 1)) : "";
-  }
-
   function readCachedVersion() {
-    const count = Number(readCookie(`${cachePrefix}-count`));
-    if (!count) return "";
-    return Array.from({ length: count }, (_, index) => readCookie(`${cachePrefix}-${index}`)).join("");
+    try {
+      return localStorage.getItem(cacheKey) || "";
+    } catch (error) {
+      return "";
+    }
   }
 
   function writeCachedVersion(html) {
-    const encoded = encodeURIComponent(html);
-    const chunkSize = 3000;
-    const count = Math.ceil(encoded.length / chunkSize);
-    document.cookie = `${cachePrefix}-count=${count};path=/;max-age=31536000;SameSite=Lax`;
-    for (let index = 0; index < count; index += 1) {
-      document.cookie = `${cachePrefix}-${index}=${encoded.slice(index * chunkSize, (index + 1) * chunkSize)};path=/;max-age=31536000;SameSite=Lax`;
-    }
+    localStorage.setItem(cacheKey, html);
+  }
+
+  function clearLegacyCacheCookies() {
+    const names = document.cookie.split("; ").map((entry) => entry.split("=", 1)[0]).filter((name) => name.startsWith(legacyCachePrefix));
+    names.forEach((name) => { document.cookie = `${name}=;path=/;max-age=0;SameSite=Lax`; });
   }
 
   function useCachedVersion() {
@@ -117,6 +119,28 @@
     return response.json();
   }
 
+  async function fetchRunningSource() {
+    if (window.__utilitiesRunningSource) return window.__utilitiesRunningSource;
+    if (!loadedScriptUrl) return "";
+    const response = await fetch(loadedScriptUrl, { cache: "no-store" });
+    if (!response.ok) return "";
+    return response.text();
+  }
+
+  async function findRunningCommit() {
+    if (window.__utilitiesRunningCommit) return window.__utilitiesRunningCommit;
+    const source = await fetchRunningSource();
+    if (!source) return "";
+    const commitsResponse = await fetch(`https://api.github.com/repos/${repository}/commits?path=notifications.js&per_page=100`, { cache: "no-store" });
+    if (!commitsResponse.ok) return "";
+    const commits = await commitsResponse.json();
+    for (const commit of commits) {
+      const response = await fetch(`https://raw.githubusercontent.com/${repository}/${commit.sha}/notifications.js`, { cache: "no-store" });
+      if (response.ok && normalizeSource(await response.text()) === normalizeSource(source)) return commit.sha;
+    }
+    return "";
+  }
+
   async function downloadNewestVersion() {
     const response = await fetch(githubPagesUrl, { cache: "no-store" });
     if (!response.ok) throw new Error("The newer version could not be downloaded.");
@@ -150,8 +174,8 @@
 
   async function checkForUpdates() {
     try {
-      const latest = await fetchLatestCommit();
-      if (latest.sha && latest.sha !== currentCommit) showUpdate(latest);
+      const [latest, runningCommit] = await Promise.all([fetchLatestCommit(), findRunningCommit()]);
+      if (latest.sha && runningCommit && latest.sha !== runningCommit) showUpdate(latest);
     } catch (error) {
       bodyNotification("warning", "Update check unavailable", { message: "Utilities could not check GitHub for a newer version." });
     }
@@ -164,6 +188,7 @@
   }
 
   window.UtilitiesNotifications = { error: (title, options) => bodyNotification("error", title, options), info: (title, options) => bodyNotification("info", title, options), warning: (title, options) => bodyNotification("warning", title, options), checkForUpdates, show: bodyNotification };
+  clearLegacyCacheCookies();
   if (useCachedVersion()) return;
   finishCachedBoot();
   addStyles();
