@@ -49,6 +49,22 @@
       gap: 8px;
     }
 
+    .settings-nav .nav-back {
+      align-items: center;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      cursor: pointer;
+      display: inline-flex;
+      font-size: 26px;
+      height: 42px;
+      justify-content: center;
+      margin-bottom: 6px;
+      padding: 0;
+      width: 42px;
+    }
+
     .settings-nav button,
     .settings-nav a,
     .settings-panel a,
@@ -164,6 +180,7 @@
     <aside class="settings-sidebar" aria-label="Settings sections">
       <h1>Settings</h1>
       <nav class="settings-nav" aria-label="Settings sections">
+        <button class="nav-back" type="button" aria-label="Back to game library" title="Back to game library">←</button>
         <button type="button" data-panel="general" aria-selected="false">General</button>
         <button type="button" data-panel="source" aria-selected="true">Source &amp; downloads</button>
       </nav>
@@ -173,9 +190,6 @@
       <section class="settings-panel" id="general-panel" aria-label="General settings">
         <h2>General</h2>
         <p>Application settings will live here as the project grows.</p>
-        <div class="settings-home">
-          <a class="primary" href="index.html">Back to the game library</a>
-        </div>
       </section>
 
       <section class="settings-panel active" id="source-panel" aria-label="Source and downloads settings">
@@ -186,7 +200,6 @@
           <a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
           <a id="compile-open" href="#" target="_blank" rel="noopener">Open compiled app</a>
           <button id="compile-download" type="button">Download compiled app</button>
-          <a href="index.html">Back to the game library</a>
         </div>
         <p class="hint" id="settings-status" role="status" aria-live="polite"></p>
       </section>
@@ -194,11 +207,16 @@
   </div>
 
   <script>
-    const navButtons = [...document.querySelectorAll(".settings-nav button")];
+    const navButtons = [...document.querySelectorAll(".settings-nav button[data-panel]")];
+    const backButton = document.querySelector(".nav-back");
     const panels = {
       general: document.getElementById("general-panel"),
       source: document.getElementById("source-panel"),
     };
+
+    backButton.addEventListener("click", () => {
+      window.location.href = "index.html";
+    });
 
     function showPanel(panelName) {
       navButtons.forEach((button) => {
