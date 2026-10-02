@@ -142,6 +142,10 @@
       width: 100%;
     }
 
+    .settings-panel [hidden] {
+      display: none;
+    }
+
     .settings-panel button[disabled],
     .settings-panel a[aria-disabled="true"] {
       opacity: 0.65;
@@ -208,6 +212,7 @@
           <a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
           <a id="compile-open" href="#" target="_blank" rel="noopener">Open compiled app</a>
           <button id="compile-download" type="button">Download compiled app</button>
+          <button id="compile-copy-data-url" type="button">Copy standalone data URL</button>
         </div>
         <p class="hint" id="settings-status" role="status" aria-live="polite"></p>
       </section>
@@ -254,7 +259,8 @@
     }
 
     function toDataUrl(html) {
-      return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      const encoded = btoa(unescape(encodeURIComponent(html)));
+      return `data:text/html;charset=utf-8;base64,${encoded}`;
     }
 
     async function compileApplication() {
@@ -263,12 +269,13 @@
         return response.text();
       });
 
-      const [indexSource, allFilesSource, filesSource, storageSource, notificationsSource] = await Promise.all([
+      const [indexSource, allFilesSource, filesSource, storageSource, notificationsSource, settingsSource] = await Promise.all([
         responseFor("index.html"),
         responseFor("AllFIles.html"),
         responseFor("files.js"),
         responseFor("game-storage.js"),
         responseFor("notifications.js"),
+        responseFor("settings.html"),
       ]);
 
       let compiledLibrary = inlineScript(allFilesSource, "files.js", filesSource);
@@ -286,16 +293,51 @@
       const libraryPayload = btoa(unescape(encodeURIComponent(compiledLibrary)));
       const libraryScript = `<script>const embeddedLibrary = "${libraryPayload}";function openEmbeddedLibrary(event){event.preventDefault();const popup=window.open("about:blank","_blank");if(!popup){document.getElementById("status").textContent="Allow pop-ups to browse all games.";return false;}popup.document.open();popup.document.write(decodeURIComponent(escape(atob(embeddedLibrary))));popup.document.close();return false;}</` + "script>";
       compiledApp = compiledApp.replace('href="AllFIles.html"', 'href="#embedded-library" onclick="return openEmbeddedLibrary(event)"');
+      compiledApp = compiledApp.replace('window.location.href = "settings.html";', "openEmbeddedSettings();");
+      const embeddedSettingsSource = settingsSource.replace(
+        'window.location.href = "index.html";',
+        'window.parent.postMessage("utilities-close-settings", "*");',
+      );
+      const settingsPayload = btoa(unescape(encodeURIComponent(embeddedSettingsSource)));
       const closingBody = "<" + "/body>";
-      compiledApp = compiledApp.replace(closingBody, `${libraryScript}${closingBody}`);
+      const settingsScript = `<script>
+        const embeddedSettings = "${settingsPayload}";
+        let settingsFrame;
+        document.querySelectorAll("#settings-button, .browse-link").forEach((action) => {
+          action.classList.remove("network-action");
+          action.removeAttribute("aria-disabled");
+          if ("disabled" in action) action.disabled = false;
+          action.tabIndex = 0;
+        });
+        function openEmbeddedSettings() {
+          if (settingsFrame) return;
+          settingsFrame = document.createElement("iframe");
+          settingsFrame.title = "Settings";
+          settingsFrame.style.cssText = "border:0;position:fixed;inset:0;width:100%;height:100%;z-index:2147483647";
+          settingsFrame.srcdoc = decodeURIComponent(escape(atob(embeddedSettings)));
+          document.body.appendChild(settingsFrame);
+        }
+        window.addEventListener("message", (event) => {
+          if (settingsFrame && event.source === settingsFrame.contentWindow && event.data === "utilities-close-settings") {
+            settingsFrame.remove();
+            settingsFrame = null;
+          }
+        });
+      </` + "script>";
+      compiledApp = compiledApp.replace(closingBody, `${libraryScript}${settingsScript}${closingBody}`);
       return compiledApp;
     }
 
     let compiledAppOpenUrl = "";
-    const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+    const compilationButtons = [
+      document.getElementById("compile-download"),
+      document.getElementById("compile-open"),
+      document.getElementById("compile-copy-data-url"),
+    ];
     const compilationLabels = new Map([
       [document.getElementById("compile-download"), "Download compiled app"],
       [document.getElementById("compile-open"), "Open compiled app"],
+      [document.getElementById("compile-copy-data-url"), "Copy standalone data URL"],
     ]);
 
     function setCompilationLoading(loading, label = "Preparing app...") {
@@ -306,17 +348,22 @@
       });
     }
 
-    setCompilationLoading(true);
-    const compilationReady = compileApplication().then((compiledApp) => {
-      compiledAppOpenUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
-      const openLink = document.getElementById("compile-open");
-      openLink.href = compiledAppOpenUrl;
-      openLink.removeAttribute("aria-disabled");
-      setCompilationLoading(false);
-      return compiledApp;
-    }).finally(() => {
-      setCompilationLoading(false);
-    });
+    let compilationReady = Promise.resolve("");
+    if (window.parent === window) {
+      setCompilationLoading(true);
+      compilationReady = compileApplication().then((compiledApp) => {
+        compiledAppOpenUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+        const openLink = document.getElementById("compile-open");
+        openLink.href = compiledAppOpenUrl;
+        openLink.removeAttribute("aria-disabled");
+        setCompilationLoading(false);
+        return compiledApp;
+      }).finally(() => {
+        setCompilationLoading(false);
+      });
+    } else {
+      compilationButtons.forEach((button) => { button.hidden = true; });
+    }
 
     async function runCompilation(mode) {
       if (mode === "open") return;
@@ -325,12 +372,10 @@
       try {
         if (mode === "open") throw new Error("Compiled app is still preparing. Try again in a moment.");
         const compiledApp = await compilationReady;
-        const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
         const link = document.createElement("a");
-        link.href = downloadUrl;
+        link.href = toDataUrl(compiledApp);
         link.download = "utilities-compiled.html";
         link.click();
-        URL.revokeObjectURL(downloadUrl);
         setStatus("Compiled app downloaded.");
       } catch (error) {
         setStatus(error.message);
@@ -340,6 +385,19 @@
     }
 
     document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
+    document.getElementById("compile-copy-data-url").addEventListener("click", async () => {
+      setCompilationLoading(true, "Preparing data URL...");
+      setStatus("Compiling standalone app...");
+      try {
+        const compiledApp = await compilationReady;
+        await navigator.clipboard.writeText(toDataUrl(compiledApp));
+        setStatus("Copied. Paste into a browser address bar to open; data URLs cannot access browser storage. Download the app for saved data.");
+      } catch (error) {
+        setStatus(`Could not copy the standalone data URL: ${error.message}`);
+      } finally {
+        setCompilationLoading(false);
+      }
+    });
     document.getElementById("compile-open").addEventListener("click", (event) => {
       if (!compiledAppOpenUrl) {
         event.preventDefault();
