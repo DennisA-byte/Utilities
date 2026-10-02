@@ -38,8 +38,15 @@
       padding: 28px 18px;
     }
 
-    .settings-sidebar h1 {
-      margin: 0 0 22px;
+    .settings-header {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .settings-header h1 {
+      margin: 0;
       font-size: 28px;
       line-height: 1.1;
     }
@@ -60,7 +67,6 @@
       font-size: 26px;
       height: 42px;
       justify-content: center;
-      margin-bottom: 6px;
       padding: 0;
       width: 42px;
     }
@@ -178,21 +184,23 @@
 <body>
   <div class="settings-shell">
     <aside class="settings-sidebar" aria-label="Settings sections">
-      <h1>Settings</h1>
-      <nav class="settings-nav" aria-label="Settings sections">
+      <div class="settings-header">
         <button class="nav-back" type="button" aria-label="Back to game library" title="Back to game library">←</button>
-        <button type="button" data-panel="general" aria-selected="false">General</button>
-        <button type="button" data-panel="source" aria-selected="true">Source &amp; downloads</button>
+        <h1>Settings</h1>
+      </div>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <button type="button" data-panel="general" aria-selected="true">General</button>
+        <button type="button" data-panel="source" aria-selected="false">Source &amp; downloads</button>
       </nav>
     </aside>
 
     <main class="settings-content">
-      <section class="settings-panel" id="general-panel" aria-label="General settings">
+      <section class="settings-panel active" id="general-panel" aria-label="General settings">
         <h2>General</h2>
         <p>Application settings will live here as the project grows.</p>
       </section>
 
-      <section class="settings-panel active" id="source-panel" aria-label="Source and downloads settings">
+      <section class="settings-panel" id="source-panel" aria-label="Source and downloads settings">
         <h2>Source &amp; downloads</h2>
         <p>Download the project source, review the repository, or create a standalone app bundle.</p>
         <div class="settings-actions">
