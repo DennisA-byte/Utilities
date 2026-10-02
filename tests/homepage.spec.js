@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const { pathToFileURL } = require("node:url");
+const { readFile } = require("node:fs/promises");
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => { window.__utilitiesRunningCommit = "test-running"; });
@@ -24,7 +25,7 @@ test.describe("Utilities homepage", () => {
     await expect(page.getByRole("button", { name: "Download compiled app" })).toBeVisible();
   });
 
-  test("opens the compiled app as a data URL", async ({ page }) => {
+  test("opens the compiled app in a popup", async ({ page }) => {
     await page.route("**/AllFIles.html", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
@@ -52,16 +53,33 @@ test.describe("Utilities homepage", () => {
   });
 
   test("downloaded compiled app opens its embedded game library", async ({ page }, testInfo) => {
+    await page.route("**/index.html", async (route) => {
+      const response = await route.fetch();
+      const html = await response.text();
+      await route.fulfill({
+        response,
+        body: html.replace("</body>", "<!-- UTF-8 probe: caf\u00e9 \u{1F3AE} --></body>"),
+      });
+    });
     await page.goto("/settings.html");
     await expect(page).toHaveURL(/settings\.html$/);
     await page.getByRole("button", { name: "Source & downloads" }).click();
     await expect(page.getByRole("heading", { name: "Source & downloads" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download compiled app" })).toBeEnabled();
+    await page.evaluate(() => {
+      const originalClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download === "utilities-compiled.html") window.__compiledDownloadUrl = this.href;
+        return originalClick.call(this);
+      };
+    });
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download compiled app" }).click();
     const download = await downloadPromise;
+    expect(await page.evaluate(() => window.__compiledDownloadUrl)).toMatch(/^data:text\/html;charset=utf-8;base64,/);
     const compiledPath = testInfo.outputPath("utilities-compiled.html");
     await download.saveAs(compiledPath);
+    expect(await readFile(compiledPath, "utf8")).toContain("UTF-8 probe: caf\u00e9 \u{1F3AE}");
 
     const compiledPage = await page.context().newPage();
     await compiledPage.goto(pathToFileURL(compiledPath).href);

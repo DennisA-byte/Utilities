@@ -254,7 +254,8 @@
     }
 
     function toDataUrl(html) {
-      return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      const encoded = btoa(unescape(encodeURIComponent(html)));
+      return `data:text/html;charset=utf-8;base64,${encoded}`;
     }
 
     async function compileApplication() {
@@ -325,12 +326,10 @@
       try {
         if (mode === "open") throw new Error("Compiled app is still preparing. Try again in a moment.");
         const compiledApp = await compilationReady;
-        const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
         const link = document.createElement("a");
-        link.href = downloadUrl;
+        link.href = toDataUrl(compiledApp);
         link.download = "utilities-compiled.html";
         link.click();
-        URL.revokeObjectURL(downloadUrl);
         setStatus("Compiled app downloaded.");
       } catch (error) {
         setStatus(error.message);
