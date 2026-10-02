@@ -52,7 +52,7 @@ test.describe("Utilities homepage", () => {
     await popup.close();
   });
 
-  test("downloaded compiled app opens its embedded game library", async ({ page }, testInfo) => {
+  test("downloaded compiled app loads all pages online and offline", async ({ page, context }, testInfo) => {
     await page.route("**/index.html", async (route) => {
       const response = await route.fetch();
       const html = await response.text();
@@ -84,6 +84,19 @@ test.describe("Utilities homepage", () => {
     const compiledPage = await page.context().newPage();
     await compiledPage.goto(pathToFileURL(compiledPath).href);
     await expect(compiledPage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    const compiledUrl = compiledPage.url();
+    await compiledPage.getByRole("button", { name: "Settings" }).click();
+    const settingsFrame = compiledPage.frameLocator('iframe[title="Settings"]');
+    await expect(settingsFrame.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(compiledPage).toHaveURL(compiledUrl);
+    await settingsFrame.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(settingsFrame.getByRole("link", { name: "Download source code" })).toBeVisible();
+    await expect(settingsFrame.getByRole("button", { name: "Download compiled app" })).toBeHidden();
+    await expect(settingsFrame.getByRole("link", { name: "Open compiled app" })).toBeHidden();
+    await settingsFrame.getByRole("button", { name: "Back to game library" }).click();
+    await expect(compiledPage.locator('iframe[title="Settings"]')).toHaveCount(0);
+    await expect(compiledPage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    await expect(compiledPage).toHaveURL(compiledUrl);
     const libraryPopupPromise = compiledPage.waitForEvent("popup");
     await compiledPage.getByRole("link", { name: "Browse all games" }).click();
     const libraryPopup = await libraryPopupPromise;
@@ -91,6 +104,31 @@ test.describe("Utilities homepage", () => {
     await expect(libraryPopup.getByRole("heading", { name: "UGS Files" })).toBeVisible();
     await libraryPopup.close();
     await compiledPage.close();
+
+    await context.unroute("https://api.github.com/repos/DennisA-byte/Utilities/commits/main");
+    await context.setOffline(true);
+    const offlinePage = await context.newPage();
+    await offlinePage.goto(pathToFileURL(compiledPath).href);
+    await expect(offlinePage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+    const offlineWarning = offlinePage.getByRole("dialog", { name: "Update check unavailable" });
+    await expect(offlineWarning).toBeVisible();
+    await offlineWarning.getByRole("button", { name: "Close" }).click();
+    const offlineUrl = offlinePage.url();
+    await offlinePage.getByRole("button", { name: "Settings" }).click();
+    const offlineSettings = offlinePage.frameLocator('iframe[title="Settings"]');
+    await expect(offlineSettings.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(offlineSettings.getByRole("heading", { name: "General" })).toBeVisible();
+    await expect(offlinePage).toHaveURL(offlineUrl);
+    await offlineSettings.getByRole("button", { name: "Back to game library" }).click();
+    await expect(offlinePage.locator('iframe[title="Settings"]')).toHaveCount(0);
+
+    const offlineLibraryPopupPromise = offlinePage.waitForEvent("popup");
+    await offlinePage.getByRole("link", { name: "Browse all games" }).click();
+    const offlineLibrary = await offlineLibraryPopupPromise;
+    await offlineLibrary.waitForLoadState("domcontentloaded");
+    await expect(offlineLibrary.getByRole("heading", { name: "UGS Files" })).toBeVisible();
+    await offlineLibrary.close();
+    await offlinePage.close();
   });
 
   test("offers a download for newer versions opened from a file URL", async ({ page }, testInfo) => {
