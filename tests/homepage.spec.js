@@ -9,17 +9,30 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("Utilities homepage", () => {
+  test("shows the settings page with General as the default section", async ({ page }) => {
+    await page.goto("/index.html");
+    await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page).toHaveURL(/settings\.html$/);
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "General" })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(page.getByRole("heading", { name: "Source & downloads" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download source code" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download compiled app" })).toBeVisible();
+  });
+
   test("opens the compiled app as a data URL", async ({ page }) => {
     await page.route("**/AllFIles.html", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
     });
-    await page.goto("/index.html");
-    const sourceTools = page.getByRole("button", { name: "Source & tools" });
-    await expect(sourceTools).toBeEnabled();
-    await sourceTools.click();
-    const openLink = page.getByRole("link", { name: "Preparing app..." });
-    await expect(openLink).toHaveAttribute("aria-disabled", "true");
+    await page.goto("/settings.html");
+    await expect(page).toHaveURL(/settings\.html$/);
+    await page.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(page.getByRole("heading", { name: "Source & downloads" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open compiled app" })).toBeEnabled();
 
     const popupPromise = page.waitForEvent("popup");
@@ -39,8 +52,11 @@ test.describe("Utilities homepage", () => {
   });
 
   test("downloaded compiled app opens its embedded game library", async ({ page }, testInfo) => {
-    await page.goto("/index.html");
-    await page.getByRole("button", { name: "Source & tools" }).click();
+    await page.goto("/settings.html");
+    await expect(page).toHaveURL(/settings\.html$/);
+    await page.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(page.getByRole("heading", { name: "Source & downloads" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download compiled app" })).toBeEnabled();
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download compiled app" }).click();
     const download = await downloadPromise;
@@ -60,8 +76,11 @@ test.describe("Utilities homepage", () => {
   });
 
   test("offers a download for newer versions opened from a file URL", async ({ page }, testInfo) => {
-    await page.goto("/index.html");
-    await page.getByRole("button", { name: "Source & tools" }).click();
+    await page.goto("/settings.html");
+    await expect(page).toHaveURL(/settings\.html$/);
+    await page.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(page.getByRole("heading", { name: "Source & downloads" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download compiled app" })).toBeEnabled();
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download compiled app" }).click();
     const download = await downloadPromise;
@@ -79,10 +98,10 @@ test.describe("Utilities homepage", () => {
     await filePage.close();
   });
 
-  test("disables source tools while offline", async ({ page, context }) => {
+  test("disables settings while offline", async ({ page, context }) => {
     await page.goto("/index.html");
     await context.setOffline(true);
-    await expect(page.getByRole("button", { name: "Source & tools" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
     await expect(page.locator("#connection-status")).toContainText("Offline");
   });
 

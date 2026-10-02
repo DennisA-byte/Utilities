@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Utilities Settings</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f6f2e8;
+      --muted: #b9b4a7;
+      --accent: #f0b35b;
+      --panel: #252b35;
+      --line: #424b58;
+      --sidebar: #1a1f28;
+      --soft: #1f2631;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #171b22;
+      color: var(--ink);
+      font: 16px/1.5 Georgia, serif;
+    }
+
+    .settings-shell {
+      display: grid;
+      grid-template-columns: minmax(220px, 260px) 1fr;
+      min-height: 100vh;
+    }
+
+    .settings-sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--line);
+      padding: 28px 18px;
+    }
+
+    .settings-header {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .settings-header h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+    }
+
+    .settings-nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .settings-nav .nav-back {
+      align-items: center;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      cursor: pointer;
+      display: inline-flex;
+      font-size: 26px;
+      height: 42px;
+      justify-content: center;
+      padding: 0;
+      width: 42px;
+    }
+
+    .settings-nav button,
+    .settings-nav a,
+    .settings-panel a,
+    .settings-panel button {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+      font: 700 14px Arial, sans-serif;
+      text-decoration: none;
+    }
+
+    .settings-nav button,
+    .settings-nav a {
+      align-items: center;
+      background: var(--soft);
+      display: flex;
+      justify-content: flex-start;
+      padding: 10px 12px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .settings-nav button[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #201a12;
+    }
+
+    .settings-content {
+      padding: 40px 32px;
+    }
+
+    .settings-panel {
+      display: none;
+      max-width: 760px;
+    }
+
+    .settings-panel.active {
+      display: block;
+    }
+
+    .settings-panel h2 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.1;
+    }
+
+    .settings-panel p {
+      color: var(--muted);
+      margin: 0 0 20px;
+    }
+
+    .settings-actions {
+      display: grid;
+      gap: 12px;
+      max-width: 420px;
+    }
+
+    .settings-panel a,
+    .settings-panel button {
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 46px;
+      padding: 11px 14px;
+      width: 100%;
+    }
+
+    .settings-panel button[disabled],
+    .settings-panel a[aria-disabled="true"] {
+      opacity: 0.65;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .settings-panel a.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #201a12;
+    }
+
+    .settings-panel .hint {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .settings-home {
+      margin-top: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .settings-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .settings-content {
+        padding: 24px 18px 40px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-shell">
+    <aside class="settings-sidebar" aria-label="Settings sections">
+      <div class="settings-header">
+        <button class="nav-back" type="button" aria-label="Back to game library" title="Back to game library">←</button>
+        <h1>Settings</h1>
+      </div>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <button type="button" data-panel="general" aria-selected="true">General</button>
+        <button type="button" data-panel="source" aria-selected="false">Source &amp; downloads</button>
+      </nav>
+    </aside>
+
+    <main class="settings-content">
+      <section class="settings-panel active" id="general-panel" aria-label="General settings">
+        <h2>General</h2>
+        <p>Application settings will live here as the project grows.</p>
+      </section>
+
+      <section class="settings-panel" id="source-panel" aria-label="Source and downloads settings">
+        <h2>Source &amp; downloads</h2>
+        <p>Download the project source, review the repository, or create a standalone app bundle.</p>
+        <div class="settings-actions">
+          <a href="https://github.com/DennisA-byte/Utilities/archive/refs/heads/main.zip" download>Download source code</a>
+          <a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
+          <a id="compile-open" href="#" target="_blank" rel="noopener">Open compiled app</a>
+          <button id="compile-download" type="button">Download compiled app</button>
+        </div>
+        <p class="hint" id="settings-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const navButtons = [...document.querySelectorAll(".settings-nav button[data-panel]")];
+    const backButton = document.querySelector(".nav-back");
+    const panels = {
+      general: document.getElementById("general-panel"),
+      source: document.getElementById("source-panel"),
+    };
+
+    backButton.addEventListener("click", () => {
+      window.location.href = "index.html";
+    });
+
+    function showPanel(panelName) {
+      navButtons.forEach((button) => {
+        const active = button.dataset.panel === panelName;
+        button.setAttribute("aria-selected", String(active));
+      });
+
+      Object.entries(panels).forEach(([name, panel]) => {
+        panel.classList.toggle("active", name === panelName);
+      });
+    }
+
+    navButtons.forEach((button) => {
+      button.addEventListener("click", () => showPanel(button.dataset.panel));
+    });
+
+    function setStatus(message = "") {
+      const status = document.getElementById("settings-status");
+      status.textContent = message;
+    }
+
+    function inlineScript(html, source, contents) {
+      const encoded = btoa(unescape(encodeURIComponent(contents)));
+      const closingScript = "<" + "/script>";
+      const bootstrap = `<script>window.__utilitiesRunningSource=decodeURIComponent(escape(atob("${encoded}")));eval(window.__utilitiesRunningSource)${closingScript}`;
+      return html.replace(`<script src="${source}">${closingScript}`, bootstrap);
+    }
+
+    function toDataUrl(html) {
+      return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    }
+
+    async function compileApplication() {
+      const responseFor = (path) => fetch(path).then((response) => {
+        if (!response.ok) throw new Error(`Could not read ${path}`);
+        return response.text();
+      });
+
+      const [indexSource, allFilesSource, filesSource, storageSource, notificationsSource] = await Promise.all([
+        responseFor("index.html"),
+        responseFor("AllFIles.html"),
+        responseFor("files.js"),
+        responseFor("game-storage.js"),
+        responseFor("notifications.js"),
+      ]);
+
+      let compiledLibrary = inlineScript(allFilesSource, "files.js", filesSource);
+      compiledLibrary = inlineScript(compiledLibrary, "game-storage.js", storageSource);
+      compiledLibrary = inlineScript(compiledLibrary, "notifications.js", notificationsSource);
+      const librarySourcePayload = btoa(unescape(encodeURIComponent(allFilesSource)));
+      compiledLibrary = compiledLibrary.replace("<head>", `<head><meta name="utilities-running-source" content="${librarySourcePayload}">`);
+      compiledLibrary = compiledLibrary.replace('href="index.html"', 'href="javascript:history.back()"');
+
+      let compiledApp = inlineScript(indexSource, "game-storage.js", storageSource);
+      compiledApp = inlineScript(compiledApp, "notifications.js", notificationsSource);
+      const appSourcePayload = btoa(unescape(encodeURIComponent(indexSource)));
+      compiledApp = compiledApp.replace("<head>", `<head><meta name="utilities-running-source" content="${appSourcePayload}">`);
+
+      const libraryPayload = btoa(unescape(encodeURIComponent(compiledLibrary)));
+      const libraryScript = `<script>const embeddedLibrary = "${libraryPayload}";function openEmbeddedLibrary(event){event.preventDefault();const popup=window.open("about:blank","_blank");if(!popup){document.getElementById("status").textContent="Allow pop-ups to browse all games.";return false;}popup.document.open();popup.document.write(decodeURIComponent(escape(atob(embeddedLibrary))));popup.document.close();return false;}</` + "script>";
+      compiledApp = compiledApp.replace('href="AllFIles.html"', 'href="#embedded-library" onclick="return openEmbeddedLibrary(event)"');
+      const closingBody = "<" + "/body>";
+      compiledApp = compiledApp.replace(closingBody, `${libraryScript}${closingBody}`);
+      return compiledApp;
+    }
+
+    let compiledAppOpenUrl = "";
+    const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+    const compilationLabels = new Map([
+      [document.getElementById("compile-download"), "Download compiled app"],
+      [document.getElementById("compile-open"), "Open compiled app"],
+    ]);
+
+    function setCompilationLoading(loading, label = "Preparing app...") {
+      compilationButtons.forEach((button) => {
+        button.disabled = loading;
+        button.setAttribute("aria-disabled", loading);
+        button.textContent = loading ? label : compilationLabels.get(button);
+      });
+    }
+
+    setCompilationLoading(true);
+    const compilationReady = compileApplication().then((compiledApp) => {
+      compiledAppOpenUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+      const openLink = document.getElementById("compile-open");
+      openLink.href = compiledAppOpenUrl;
+      openLink.removeAttribute("aria-disabled");
+      setCompilationLoading(false);
+      return compiledApp;
+    }).finally(() => {
+      setCompilationLoading(false);
+    });
+
+    async function runCompilation(mode) {
+      if (mode === "open") return;
+      setCompilationLoading(true, "Downloading...");
+      setStatus("Compiling app...");
+      try {
+        if (mode === "open") throw new Error("Compiled app is still preparing. Try again in a moment.");
+        const compiledApp = await compilationReady;
+        const downloadUrl = URL.createObjectURL(new Blob([compiledApp], { type: "text/html" }));
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = "utilities-compiled.html";
+        link.click();
+        URL.revokeObjectURL(downloadUrl);
+        setStatus("Compiled app downloaded.");
+      } catch (error) {
+        setStatus(error.message);
+      } finally {
+        setCompilationLoading(false);
+      }
+    }
+
+    document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
+    document.getElementById("compile-open").addEventListener("click", (event) => {
+      if (!compiledAppOpenUrl) {
+        event.preventDefault();
+        setStatus("Compiled app is still preparing. Try again in a moment.");
+      }
+    });
+  </script>
+</body>
+</html>
