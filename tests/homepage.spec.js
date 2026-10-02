@@ -52,6 +52,38 @@ test.describe("Utilities homepage", () => {
     await popup.close();
   });
 
+  test("copies a standalone data URL that runs offline", async ({ page, context, browser }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:8000" });
+    await page.goto("/settings.html");
+    await page.getByRole("button", { name: "Source & downloads" }).click();
+    await expect(page.getByRole("button", { name: "Copy standalone data URL" })).toBeEnabled();
+    await page.getByRole("button", { name: "Copy standalone data URL" }).click();
+    await expect(page.getByRole("status")).toContainText("data URLs cannot access browser storage");
+    const dataUrl = await page.evaluate(() => navigator.clipboard.readText());
+    expect(dataUrl).toMatch(/^data:text\/html;charset=utf-8;base64,/);
+
+    const standaloneContext = await browser.newContext();
+    try {
+      await standaloneContext.setOffline(true);
+      const standalonePage = await standaloneContext.newPage();
+      await standalonePage.goto(dataUrl);
+      await expect(standalonePage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+      await standalonePage.getByRole("button", { name: "Settings" }).click();
+      const settingsFrame = standalonePage.frameLocator('iframe[title="Settings"]');
+      await expect(settingsFrame.getByRole("heading", { name: "General" })).toBeVisible();
+      await settingsFrame.getByRole("button", { name: "Back to game library" }).click();
+
+      const libraryPopupPromise = standalonePage.waitForEvent("popup");
+      await standalonePage.getByRole("link", { name: "Browse all games" }).click();
+      const libraryPopup = await libraryPopupPromise;
+      await libraryPopup.waitForLoadState("domcontentloaded");
+      await expect(libraryPopup.getByRole("heading", { name: "UGS Files" })).toBeVisible();
+      await libraryPopup.close();
+    } finally {
+      await standaloneContext.close();
+    }
+  });
+
   test("downloaded compiled app loads all pages online and offline", async ({ page, context }, testInfo) => {
     await page.route("**/index.html", async (route) => {
       const response = await route.fetch();

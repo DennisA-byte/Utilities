@@ -212,6 +212,7 @@
           <a href="https://github.com/DennisA-byte/Utilities" target="_blank" rel="noopener noreferrer">View source repository</a>
           <a id="compile-open" href="#" target="_blank" rel="noopener">Open compiled app</a>
           <button id="compile-download" type="button">Download compiled app</button>
+          <button id="compile-copy-data-url" type="button">Copy standalone data URL</button>
         </div>
         <p class="hint" id="settings-status" role="status" aria-live="polite"></p>
       </section>
@@ -328,10 +329,15 @@
     }
 
     let compiledAppOpenUrl = "";
-    const compilationButtons = [document.getElementById("compile-download"), document.getElementById("compile-open")];
+    const compilationButtons = [
+      document.getElementById("compile-download"),
+      document.getElementById("compile-open"),
+      document.getElementById("compile-copy-data-url"),
+    ];
     const compilationLabels = new Map([
       [document.getElementById("compile-download"), "Download compiled app"],
       [document.getElementById("compile-open"), "Open compiled app"],
+      [document.getElementById("compile-copy-data-url"), "Copy standalone data URL"],
     ]);
 
     function setCompilationLoading(loading, label = "Preparing app...") {
@@ -379,6 +385,19 @@
     }
 
     document.getElementById("compile-download").addEventListener("click", () => runCompilation("download"));
+    document.getElementById("compile-copy-data-url").addEventListener("click", async () => {
+      setCompilationLoading(true, "Preparing data URL...");
+      setStatus("Compiling standalone app...");
+      try {
+        const compiledApp = await compilationReady;
+        await navigator.clipboard.writeText(toDataUrl(compiledApp));
+        setStatus("Copied. Paste into a browser address bar to open; data URLs cannot access browser storage. Download the app for saved data.");
+      } catch (error) {
+        setStatus(`Could not copy the standalone data URL: ${error.message}`);
+      } finally {
+        setCompilationLoading(false);
+      }
+    });
     document.getElementById("compile-open").addEventListener("click", (event) => {
       if (!compiledAppOpenUrl) {
         event.preventDefault();
