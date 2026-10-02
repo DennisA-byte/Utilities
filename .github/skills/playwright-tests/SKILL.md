@@ -12,8 +12,8 @@ Run and maintain the Utilities browser end-to-end suite using the repository's e
 - Tests are in `tests/`; the current suite is `tests/homepage.spec.js`.
 - `npm run test:e2e` invokes `playwright test`.
 - `playwright.config.js` starts `python3 -m http.server 8000 --directory src` and waits for `http://127.0.0.1:8000/index.html`. Do not start a second server for normal runs. It reuses an existing server locally and does not reuse one in CI.
-- The configured project is Chromium, with base URL `http://127.0.0.1:8000`.
-- Install dependencies with `npm install` if `node_modules` or Playwright is unavailable. In CI, install the browser with `npx playwright install --with-deps chromium`.
+- The configured projects are Chromium, branded Chrome, Edge, Firefox, and WebKit (Safari engine), with base URL `http://127.0.0.1:8000`.
+- Install dependencies with `npm install` if `node_modules` or Playwright is unavailable. Install local browser binaries with `npx playwright install chromium chrome msedge firefox webkit`; Linux system dependencies may also be required. CI installs all five browser targets and their dependencies with `npx playwright install --with-deps chromium chrome msedge firefox webkit`.
 
 ## Procedure
 

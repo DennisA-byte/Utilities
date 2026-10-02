@@ -30,13 +30,13 @@ npm run test:e2e
 The Playwright config starts a local server automatically with:
 
 ```bash
-python3 -m http.server 8000
+python3 -m http.server 8000 --directory src
 ```
 
-The configured base URL is `http://127.0.0.1:8000`. The test project is Chromium. Playwright browsers are installed in CI with:
+The configured base URL is `http://127.0.0.1:8000`. Tests run on Chromium, Chrome, Edge, Firefox, and WebKit (Safari engine). Playwright browsers and their system dependencies are installed in CI with:
 
 ```bash
-npx playwright install --with-deps chromium
+npx playwright install --with-deps chromium chrome msedge firefox webkit
 ```
 
 For focused work, use a test title filter:
