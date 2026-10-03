@@ -360,14 +360,57 @@ test.describe("Utilities homepage", () => {
   });
 });
 
-test("search hides nonmatching rows and their Actions controls", async ({ page }) => {
+test("search filters games and actions, shows empty results, and restores the list", async ({ page }) => {
   await page.goto("/AllFIles.html");
-  await expect(page.locator(".game-row").first()).toBeVisible();
+  const allRows = page.locator(".game-row");
+  const rowCount = await allRows.count();
+  await expect(allRows.first()).toBeVisible();
   await page.locator("#searchInput").fill("cl2048");
   const visibleRows = page.locator(".game-row:not([hidden])");
   await expect(visibleRows).not.toHaveCount(0);
   const visibleValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  expect(visibleValues).toEqual(expect.arrayContaining(["cl2048", "cl2048cupcakes"]));
   expect(visibleValues.every((value) => value.toLowerCase().includes("cl2048"))).toBe(true);
   await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
   await expect(page.locator(".game-row[hidden]").first()).toBeHidden();
+
+  await page.locator("#searchInput").fill("no-such-game-file");
+  await expect(visibleRows).toHaveCount(0);
+  await expect(page.locator(".letter-section:not([hidden])")).toHaveCount(0);
+
+  await page.locator("#searchInput").fill("");
+  await expect(visibleRows).toHaveCount(rowCount);
+  await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
+});
+
+test("runs a searched game from the all games page", async ({ page }) => {
+  await page.route("https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/cl2048.html?*", async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Mock 2048</title><h1>Mock 2048</h1>",
+    });
+  });
+  await page.goto("/AllFIles.html");
+  await page.locator("#searchInput").fill("cl2048");
+
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "cl2048", exact: true }).click();
+  const gamePopup = await popupPromise;
+  await expect(gamePopup.getByRole("heading", { name: "Mock 2048" })).toBeVisible();
+  await expect(gamePopup.locator("#utilities-toolbar")).toBeVisible();
+  await expect(page.locator('.game-row[data-search="cl2048"] .game-status')).toHaveText("Playing");
+  await gamePopup.close();
+});
+
+test("reports a failed game launch on the all games page", async ({ page }) => {
+  await page.route("https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/cl2048.html?*", async (route) => {
+    await route.fulfill({ status: 404, body: "Not found" });
+  });
+  await page.goto("/AllFIles.html");
+  await page.locator("#searchInput").fill("cl2048");
+  await page.getByRole("button", { name: "cl2048", exact: true }).click();
+
+  await expect(page.locator('.game-row[data-search="cl2048"] .game-status')).toHaveText("Not available");
+  await expect(page.locator("#action-status")).toHaveText("Could not load cl2048");
+  expect(page.context().pages()).toHaveLength(1);
 });
