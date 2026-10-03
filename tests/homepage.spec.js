@@ -389,6 +389,28 @@ test("search filters games and actions, shows empty results, and restores the li
   await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
 });
 
+test("applies a search entered while the all games list is loading", async ({ page }) => {
+  await page.route("**/game-storage.js", async (route) => {
+    const response = await route.fetch();
+    const script = await response.text();
+    const delayedScript = script.replace(
+      "async function getSavedGames() {",
+      "async function getSavedGames() {\n    await new Promise((resolve) => setTimeout(resolve, 500));",
+    );
+    expect(delayedScript).not.toBe(script);
+    await route.fulfill({ response, body: delayedScript });
+  });
+
+  await page.goto("/AllFIles.html");
+  await expect(page.locator(".game-row")).toHaveCount(0);
+  await page.locator("#searchInput").fill("min");
+
+  const visibleRows = page.locator(".game-row:not([hidden])");
+  await expect(visibleRows).not.toHaveCount(0);
+  const visibleValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  expect(visibleValues.every((value) => value.toLowerCase().includes("min"))).toBe(true);
+});
+
 test("runs a searched game from the all games page", async ({ page }) => {
   await page.route("https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/cl2048.html?*", async (route) => {
     await route.fulfill({

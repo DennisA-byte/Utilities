@@ -549,10 +549,10 @@ function generateSidebar(allChars, filesByChar) {
     sidebar.appendChild(btn);
   });
 }
-generateAllSections();</script>
+const sectionsReady = generateAllSections();</script>
 <script>
 const searchInput = document.getElementById("searchInput");
-searchInput.addEventListener("input", () => {
+function filterGames() {
   const query = searchInput.value.trim().toLowerCase();
   document.querySelectorAll(".letter-section").forEach((section) => {
     const rows = [...section.querySelectorAll(".game-row")];
@@ -564,7 +564,9 @@ searchInput.addEventListener("input", () => {
     });
     section.hidden = !hasMatch;
   });
-});
+}
+searchInput.addEventListener("input", filterGames);
+sectionsReady.then(filterGames);
 </script>
 </body> 
    </html>
