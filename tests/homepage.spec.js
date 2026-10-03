@@ -374,6 +374,12 @@ test("search filters games and actions, shows empty results, and restores the li
   await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
   await expect(page.locator(".game-row[hidden]").first()).toBeHidden();
 
+  await page.locator("#searchInput").fill("m");
+  const matchingMValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  expect(matchingMValues.length).toBeGreaterThan(0);
+  expect(matchingMValues.every((value) => value.toLowerCase().includes("m"))).toBe(true);
+  await expect(visibleRows.locator('input[type=button]:visible')).toHaveCount(matchingMValues.length);
+
   await page.locator("#searchInput").fill("no-such-game-file");
   await expect(visibleRows).toHaveCount(0);
   await expect(page.locator(".letter-section:not([hidden])")).toHaveCount(0);
