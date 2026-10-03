@@ -368,17 +368,20 @@ test("search filters games and actions, shows empty results, and restores the li
   await page.locator("#searchInput").fill("cl2048");
   const visibleRows = page.locator(".game-row:not([hidden])");
   await expect(visibleRows).not.toHaveCount(0);
-  const visibleValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  const visibleValues = await visibleRows.locator(".game-launch").evaluateAll((buttons) => buttons.map((button) => button.textContent));
   expect(visibleValues).toEqual(expect.arrayContaining(["cl2048", "cl2048cupcakes"]));
   expect(visibleValues.every((value) => value.toLowerCase().includes("cl2048"))).toBe(true);
+  await expect(page.locator('.game-row[data-search="cl2048"] mark')).toHaveText("cl2048");
+  await expect(page.locator('.game-row[data-search="cl2048cupcakes"] mark')).toHaveText("cl2048");
   await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
   await expect(page.locator(".game-row[hidden]").first()).toBeHidden();
 
   await page.locator("#searchInput").fill("m");
-  const matchingMValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  const matchingMValues = await visibleRows.locator(".game-launch").evaluateAll((buttons) => buttons.map((button) => button.textContent));
   expect(matchingMValues.length).toBeGreaterThan(0);
   expect(matchingMValues.every((value) => value.toLowerCase().includes("m"))).toBe(true);
-  await expect(visibleRows.locator('input[type=button]:visible')).toHaveCount(matchingMValues.length);
+  await expect(visibleRows.locator(".game-launch:visible")).toHaveCount(matchingMValues.length);
+  await expect(visibleRows.locator(".game-launch mark")).not.toHaveCount(0);
 
   await page.locator("#searchInput").fill("no-such-game-file");
   await expect(visibleRows).toHaveCount(0);
@@ -387,6 +390,7 @@ test("search filters games and actions, shows empty results, and restores the li
   await page.locator("#searchInput").fill("");
   await expect(visibleRows).toHaveCount(rowCount);
   await expect(visibleRows.first().locator(".menu-toggle")).toBeVisible();
+  await expect(page.locator(".game-launch mark")).toHaveCount(0);
 });
 
 test("applies a search entered while the all games list is loading", async ({ page }) => {
@@ -407,8 +411,9 @@ test("applies a search entered while the all games list is loading", async ({ pa
 
   const visibleRows = page.locator(".game-row:not([hidden])");
   await expect(visibleRows).not.toHaveCount(0);
-  const visibleValues = await visibleRows.locator("input[type=button]").evaluateAll((buttons) => buttons.map((button) => button.value));
+  const visibleValues = await visibleRows.locator(".game-launch").evaluateAll((buttons) => buttons.map((button) => button.textContent));
   expect(visibleValues.every((value) => value.toLowerCase().includes("min"))).toBe(true);
+  await expect(visibleRows.locator(".game-launch mark")).not.toHaveCount(0);
 });
 
 test("runs a searched game from the all games page", async ({ page }) => {

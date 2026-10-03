@@ -126,7 +126,7 @@
           max-width: 600px;
         }
 
-        .game-row input[type="button"] {
+        .game-row .game-launch {
           flex: 1;
         }
 
@@ -180,11 +180,23 @@
           white-space: nowrap;
         }
         .menu-content button:hover { background: var(--accent); color: #201a12; }
-        .game-row input[type="button"] {
+        .game-row .game-launch {
           background: transparent;
           border: 0;
           box-shadow: none;
+          color: var(--ink);
+          cursor: pointer;
+          font: inherit;
           padding: 12px 10px;
+          text-align: left;
+        }
+        .game-row .game-launch:hover {
+          background: transparent;
+          color: var(--accent);
+        }
+        .game-row .game-launch mark {
+          background: var(--accent);
+          color: #201a12;
         }
 
         .game-status {
@@ -448,9 +460,11 @@ async function generateAllSections() {
         const row = document.createElement("div");
         row.className = "game-row";
         row.dataset.search = file.toLowerCase();
-        const btn = document.createElement("input");
+        const btn = document.createElement("button");
         btn.type = "button";
-        btn.value = file;
+        btn.className = "game-launch";
+        btn.dataset.name = file;
+        btn.textContent = file;
         const gameStatus = document.createElement("span");
         gameStatus.className = "game-status";
         gameStatus.textContent = ["Available", ...(savedFiles.has(file) ? ["Offline ready"] : []), ...(GameLibrary.isPinned(file) ? ["Pinned"] : [])].join(" · ");
@@ -558,9 +572,28 @@ function filterGames() {
     const rows = [...section.querySelectorAll(".game-row")];
     let hasMatch = false;
     rows.forEach((row) => {
-      const match = !query || row.dataset.search.includes(query);
+      const gameButton = row.querySelector(".game-launch");
+      const gameName = gameButton.dataset.name;
+      const lowerName = gameName.toLowerCase();
+      const match = !query || lowerName.includes(query);
       row.hidden = !match;
       hasMatch ||= match;
+      gameButton.replaceChildren();
+      if (!query) {
+        gameButton.textContent = gameName;
+        return;
+      }
+      let nameOffset = 0;
+      let matchIndex = lowerName.indexOf(query);
+      while (matchIndex !== -1) {
+        gameButton.append(document.createTextNode(gameName.slice(nameOffset, matchIndex)));
+        const highlight = document.createElement("mark");
+        highlight.textContent = gameName.slice(matchIndex, matchIndex + query.length);
+        gameButton.append(highlight);
+        nameOffset = matchIndex + query.length;
+        matchIndex = lowerName.indexOf(query, nameOffset);
+      }
+      gameButton.append(document.createTextNode(gameName.slice(nameOffset)));
     });
     section.hidden = !hasMatch;
   });
