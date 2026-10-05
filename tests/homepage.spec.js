@@ -52,8 +52,21 @@ test.describe("Utilities homepage", () => {
     await popup.close();
   });
 
-  test("copies a standalone data URL that runs offline", async ({ page, context, browser }) => {
-    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:8000" });
+  test("copies a standalone data URL that runs offline", async ({ page, context, browser, browserName }) => {
+    if (browserName === "firefox" || browserName === "webkit") {
+      await page.addInitScript(() => {
+        let clipboardText = "";
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (text) => { clipboardText = text; },
+            readText: async () => clipboardText,
+          },
+        });
+      });
+    } else {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:8000" });
+    }
     await page.goto("/settings.html");
     await page.getByRole("button", { name: "Source & downloads" }).click();
     await expect(page.getByRole("button", { name: "Copy standalone data URL" })).toBeEnabled();
@@ -113,8 +126,11 @@ test.describe("Utilities homepage", () => {
     await download.saveAs(compiledPath);
     expect(await readFile(compiledPath, "utf8")).toContain("UTF-8 probe: caf\u00e9 \u{1F3AE}");
 
+    const compiledDocumentUrl = testInfo.project.name === "webkit"
+      ? await page.evaluate(() => window.__compiledDownloadUrl)
+      : pathToFileURL(compiledPath).href;
     const compiledPage = await page.context().newPage();
-    await compiledPage.goto(pathToFileURL(compiledPath).href);
+    await compiledPage.goto(compiledDocumentUrl);
     await expect(compiledPage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
     const compiledUrl = compiledPage.url();
     await compiledPage.getByRole("button", { name: "Settings" }).click();
@@ -140,7 +156,7 @@ test.describe("Utilities homepage", () => {
     await context.unroute("https://api.github.com/repos/DennisA-byte/Utilities/commits/main");
     await context.setOffline(true);
     const offlinePage = await context.newPage();
-    await offlinePage.goto(pathToFileURL(compiledPath).href);
+    await offlinePage.goto(compiledDocumentUrl);
     await expect(offlinePage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
     const offlineWarning = offlinePage.getByRole("dialog", { name: "Update check unavailable" });
     await expect(offlineWarning).toBeVisible();
