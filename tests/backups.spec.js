@@ -346,6 +346,12 @@ test("shows an error for an invalid restore file without changing app data", asy
 });
 
 test("opens Backups and creates a source backup in the compiled app", async ({ page }, testInfo) => {
+  await page.goto("/index.html");
+  await page.evaluate(async () => {
+    localStorage.setItem("utilities-played-games", JSON.stringify(["cl1"]));
+    await GameLibrary.saveGame("cl1", "<title>Compiled game fixture</title>", { title: "Compiled game fixture", source: "upload" });
+    await GameLibrary.saveGameData("cl1", { score: 17 });
+  });
   await page.goto("/settings.html");
   await page.getByRole("button", { name: "Source & downloads" }).click();
   const popupPromise = page.waitForEvent("popup");
@@ -358,6 +364,13 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   const backupsFrame = popup.frameLocator('iframe[title="Backups"]');
   await expect(backupsFrame.getByRole("heading", { name: "Backups" })).toBeVisible();
   await expect(backupsFrame.getByRole("button", { name: "Start backup" })).toBeVisible();
+  await expect(backupsFrame.locator("#game-list-status")).toContainText("1 played or saved games found");
+  await backupsFrame.getByRole("button", { name: "Games" }).click();
+  const fixture = backupsFrame.locator("#game-tree details").first();
+  await fixture.locator("summary").click();
+  await expect(backupsFrame.getByRole("checkbox", { name: "Include Compiled game fixture code" })).toBeVisible();
+  await expect(backupsFrame.getByRole("checkbox", { name: "Include Compiled game fixture data" })).toBeVisible();
+  await backupsFrame.getByRole("button", { name: "General" }).click();
   await backupsFrame.getByRole("checkbox", { name: "Include source code in a single file" }).check();
   const downloadPromise = popup.waitForEvent("download");
   await backupsFrame.getByRole("button", { name: "Start backup" }).click();
@@ -371,6 +384,25 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   await backupsFrame.getByRole("link", { name: "Back to Settings" }).click();
   await expect(settingsFrame.getByRole("link", { name: "Backups" })).toBeVisible();
   await popup.close();
+});
+
+test("shows saved games when an older storage script lacks the backup inventory API", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.evaluate(async () => {
+    localStorage.setItem("utilities-recent-games", JSON.stringify(["upload-legacy"]));
+    await GameLibrary.saveGame("upload-legacy", "<title>Legacy saved game</title>", { title: "Legacy saved game", source: "upload" });
+  });
+  await page.context().route("**/game-storage.js", async (route) => {
+    const response = await route.fetch();
+    const script = (await response.text()).replace("download, getBackupGames, getGame,", "download, getGame,");
+    await route.fulfill({ response, body: script });
+  });
+  const backupsPage = await page.context().newPage();
+  await backupsPage.goto("/backups.html");
+
+  await expect(backupsPage.locator("#game-list-status")).toContainText("1 played or saved games found");
+  await expect(backupsPage.locator("#game-tree summary")).toHaveText("Legacy saved game");
+  await expect(backupsPage.locator("#backup-status")).not.toContainText("getBackupGames is not a function");
 });
 
 test("backs up and restores everything selected from the master setting", async ({ page }, testInfo) => {

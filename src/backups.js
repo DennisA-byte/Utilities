@@ -216,7 +216,7 @@ const UtilitiesBackups = (() => {
           title: record?.title || game.title || game.file,
           source: record?.source || game.source || "library",
           code: game.includeCode ? record.text : null,
-          data: game.includeData ? GameLibrary.getGameData(game.file) : null,
+          data: game.includeData && typeof GameLibrary.getGameData === "function" ? GameLibrary.getGameData(game.file) : null,
         };
         games[current] = result;
         completedGames += 1;
@@ -326,7 +326,26 @@ const UtilitiesBackups = (() => {
   }
 
   async function listGames() {
-    return GameLibrary.getBackupGames();
+    if (typeof GameLibrary.getBackupGames === "function") return GameLibrary.getBackupGames();
+
+    const byFile = new Map();
+    const history = [
+      ...(typeof GameLibrary.getPlayedGames === "function" ? GameLibrary.getPlayedGames() : []),
+      ...(typeof GameLibrary.getRecent === "function" ? GameLibrary.getRecent() : []),
+    ];
+    history.forEach((file) => byFile.set(file, { file, title: file, source: "library", played: true, hasCode: false, hasData: false }));
+    const savedGames = await GameLibrary.getSavedGames();
+    savedGames.forEach((record) => {
+      const game = byFile.get(record.file) || { file: record.file, played: false };
+      Object.assign(game, {
+        title: record.title || game.title || record.file,
+        source: record.source || game.source || "library",
+        hasCode: typeof record.text === "string",
+        hasData: typeof GameLibrary.getGameData === "function" && Object.keys(GameLibrary.getGameData(record.file)).length > 0,
+      });
+      byFile.set(record.file, game);
+    });
+    return [...byFile.values()];
   }
 
   function listAppDataGroups() {
