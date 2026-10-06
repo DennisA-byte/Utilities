@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { readFile } = require("node:fs/promises");
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => { window.__utilitiesRunningCommit = "test-running"; });
@@ -102,4 +103,50 @@ test("rejects a damaged backup before changing stored data", async ({ page }) =>
 
   expect(result.errorMessage).toContain("verification failed");
   expect(result.pinned).toBe(JSON.stringify(["current"]));
+});
+
+test("encrypts backups and rejects an incorrect password", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["encrypted-game"]));
+    const selection = { note: "private note", includeAppData: true, games: [] };
+    const encrypted = await UtilitiesBackups.createBackup(selection, { password: "correct horse battery staple" });
+    const envelope = JSON.parse(encrypted);
+    const parsed = await UtilitiesBackups.parseBackup(encrypted, "correct horse battery staple");
+    let wrongPasswordError = "";
+    try {
+      await UtilitiesBackups.parseBackup(encrypted, "incorrect password");
+    } catch (error) {
+      wrongPasswordError = error.message;
+    }
+    return { envelope, parsed, wrongPasswordError };
+  });
+
+  expect(result.envelope.encrypted).toBe(true);
+  expect(result.envelope.encryption.algorithm).toBe("AES-GCM");
+  expect(result.envelope.encryption.passwordVerifier).toBeTruthy();
+  expect(result.parsed.header.note).toBe("private note");
+  expect(result.parsed.body.appData["utilities-pinned-games"]).toBe(JSON.stringify(["encrypted-game"]));
+  expect(result.wrongPasswordError).toContain("password");
+});
+
+test("recovery HTML decrypts and downloads an encrypted backup", async ({ page }, testInfo) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const encrypted = await page.evaluate(() => UtilitiesBackups.createBackup({ note: "recover me", includeAppData: false, games: [] }, { password: "recovery password" }));
+  const recoveryHtml = JSON.parse(encrypted).recoveryHtml;
+  await page.setContent(recoveryHtml);
+  await page.locator("#backup-file").setInputFiles({ name: "encrypted-backup.json", mimeType: "application/json", buffer: Buffer.from(encrypted) });
+  await page.getByPlaceholder("Backup password").fill("recovery password");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Decrypt and download" }).click();
+  const download = await downloadPromise;
+  const decryptedPath = testInfo.outputPath("decrypted-backup.json");
+  await download.saveAs(decryptedPath);
+  const decrypted = JSON.parse(await readFile(decryptedPath, "utf8"));
+
+  expect(decrypted.header.note).toBe("recover me");
+  expect(decrypted.format).toBe("utilities-backup");
 });
