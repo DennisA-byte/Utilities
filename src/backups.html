@@ -47,6 +47,7 @@
     .settings-panel p, .field-hint { color: var(--muted); margin: 0 0 16px; }
     .field-row { align-items: flex-start; display: flex; gap: 10px; margin: 14px 0; }
     .field-row input[type="checkbox"] { accent-color: var(--accent); height: 18px; margin: 2px 0 0; width: 18px; }
+    .field-row input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
     .field-row label { flex: 1; }
     .field-row textarea, .field-row input[type="password"] { background: var(--soft); border: 1px solid var(--line); border-radius: 3px; color: var(--ink); display: block; margin-top: 6px; padding: 10px; width: 100%; }
     .field-row textarea { min-height: 84px; resize: vertical; }
@@ -106,6 +107,10 @@
 
     <section class="backup-settings" aria-labelledby="backup-settings-heading">
       <h2 id="backup-settings-heading">Backup settings</h2>
+      <label class="field-row" id="backup-everything-row">
+        <input id="backup-everything" type="checkbox">
+        <span>Back up everything, including all app data, game code, game data, and source</span>
+      </label>
       <div class="settings-layout">
         <nav class="settings-tree" aria-label="Backup settings sections">
           <ul>
@@ -130,7 +135,6 @@
 
           <section class="settings-panel" data-panel="app-data" aria-label="App data backup settings">
             <h3>App data</h3>
-            <label class="field-row"><input id="backup-everything" type="checkbox"><span>Back up everything, including all app data, game code, game data, and source</span></label>
             <p>Choose which application data categories to include.</p>
             <div id="app-data-groups" aria-label="Application data categories"></div>
           </section>
@@ -241,11 +245,12 @@
       const selectedCount = choices.filter((choice) => choice.checked).length;
       backupEverythingCheckbox.checked = choices.length > 0 && selectedCount === choices.length;
       backupEverythingCheckbox.indeterminate = selectedCount > 0 && selectedCount < choices.length;
+      choices.forEach((choice) => { choice.disabled = backupEverythingCheckbox.checked; });
     }
 
     backupEverythingCheckbox.addEventListener("change", () => {
       allBackupChoices().forEach((choice) => { choice.checked = backupEverythingCheckbox.checked; });
-      backupEverythingCheckbox.indeterminate = false;
+      updateBackupEverythingState();
     });
     appDataGroupsContainer.addEventListener("change", updateBackupEverythingState);
     includeSourceCheckbox.addEventListener("change", updateBackupEverythingState);

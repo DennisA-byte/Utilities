@@ -483,3 +483,47 @@ test("backs up only the selected application data category", async ({ page }, te
     "utilities-offline-update-preferences": JSON.stringify({ "selected-game": "always" }),
   });
 });
+
+test("places the everything option above tabs and locks individual selections", async ({ page }) => {
+  await page.goto("/backups.html");
+  await page.evaluate(async () => {
+    localStorage.setItem("utilities-played-games", JSON.stringify(["cl1"]));
+    await GameLibrary.saveGame("cl1", "<title>Test game</title>", { title: "Test game" });
+    await GameLibrary.saveGameData("cl1", { score: 10 });
+  });
+  await page.reload();
+
+  const backupEverything = page.getByRole("checkbox", { name: "Back up everything, including all app data, game code, game data, and source" });
+  await expect(backupEverything).toBeVisible();
+  expect(await page.evaluate(() => {
+    const master = document.getElementById("backup-everything");
+    const tabs = document.querySelector(".settings-layout");
+    return Boolean(master.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING);
+  })).toBe(true);
+  await backupEverything.check();
+
+  await page.getByRole("button", { name: "General" }).click();
+  await expect(page.locator("#include-source")).toBeDisabled();
+  await expect(page.getByLabel("Note to include")).toBeEnabled();
+
+  await page.getByRole("button", { name: "App data" }).click();
+  await expect(page.getByRole("checkbox", { name: "Library organization" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Offline update preferences" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Other app settings" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Games" }).click();
+  const gameDetails = page.locator("#game-tree details").first();
+  await gameDetails.locator("summary").click();
+  await expect(page.getByRole("checkbox", { name: "Include Test game code" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Include Test game data" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Encryption" }).click();
+  await expect(page.getByRole("checkbox", { name: "Encrypt this backup" })).toBeEnabled();
+  await page.getByRole("checkbox", { name: "Encrypt this backup" }).check();
+  await expect(page.getByLabel("Password", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Confirm password", { exact: true })).toBeEnabled();
+
+  await backupEverything.uncheck();
+  await page.getByRole("button", { name: "App data" }).click();
+  await expect(page.getByRole("checkbox", { name: "Library organization" })).toBeEnabled();
+});
