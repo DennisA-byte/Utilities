@@ -38,9 +38,13 @@
     .settings-tree { border-right: 1px solid var(--line); padding-right: 18px; }
     .settings-tree ul { list-style: none; margin: 0; padding: 0; }
     .settings-tree li + li { margin-top: 4px; }
-    .settings-tree button { background: transparent; border: 0; border-radius: 3px; color: var(--muted); cursor: pointer; font: 700 14px Arial, sans-serif; padding: 9px 10px; text-align: left; width: 100%; }
+    .settings-tree button, .settings-tree summary { background: transparent; border: 0; border-radius: 3px; color: var(--muted); cursor: pointer; display: block; font: 700 14px Arial, sans-serif; padding: 9px 10px; text-align: left; width: 100%; }
+    .settings-tree summary { list-style: none; }
+    .settings-tree summary::-webkit-details-marker { display: none; }
+    .settings-tree details[open] > summary { color: var(--ink); }
     .settings-tree button[aria-selected="true"] { background: var(--soft); color: var(--ink); }
     .settings-tree .tree-child { margin-left: 14px; }
+    .settings-tree .tree-child button { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; padding-left: 14px; }
     .settings-panel { display: none; max-width: 700px; padding: 0 24px; }
     .settings-panel.active { display: block; }
     .settings-panel h3 { font-size: 18px; margin: 0 0 18px; }
@@ -76,10 +80,8 @@
     .task-percent { align-self: center; color: var(--muted); font: 12px Arial, sans-serif; grid-column: 3; grid-row: 1 / span 2; text-align: right; }
     .task-list [hidden] { display: none; }
     .task-status { white-space: pre-line; }
-    #game-tree details { color: var(--muted); font: 13px Arial, sans-serif; margin: 4px 0 4px 14px; }
-    #game-tree summary { cursor: pointer; overflow-wrap: anywhere; padding: 5px 0; }
-    #game-tree label { align-items: center; display: flex; gap: 6px; margin: 5px 0 5px 10px; }
-    #game-tree input { accent-color: var(--accent); }
+    .game-choice { align-items: center; display: flex; gap: 8px; margin: 14px 0; }
+    .game-choice input { accent-color: var(--accent); height: 18px; width: 18px; }
     .backup-status { color: var(--muted); min-height: 24px; }
     .backup-status[data-state="failed"] { color: var(--failure); }
     .backup-status[data-state="complete"] { color: var(--success); }
@@ -88,8 +90,9 @@
       .backup-shell { padding: 22px 16px 36px; }
       .settings-layout { grid-template-columns: 1fr; }
       .settings-tree { border-bottom: 1px solid var(--line); border-right: 0; margin-bottom: 20px; padding: 0 0 16px; }
-      .settings-tree ul { display: flex; flex-wrap: wrap; gap: 4px; }
+      .settings-tree > ul { display: flex; flex-wrap: wrap; gap: 4px; }
       .settings-tree li + li { margin: 0; }
+      .settings-tree .tree-child { display: grid; gap: 2px; }
       .settings-panel { padding: 0; }
       .task-list li { grid-template-columns: minmax(120px, 1fr) minmax(100px, 1fr) 42px; }
       .task-status { grid-column: 1 / -1; }
@@ -114,13 +117,16 @@
       <div class="settings-layout">
         <nav class="settings-tree" aria-label="Backup settings sections">
           <ul>
-            <li><button type="button" data-section="general" aria-selected="true">General</button></li>
-            <li><button type="button" data-section="app-data" aria-selected="false">App data</button></li>
+            <li><button type="button" data-panel="general" aria-selected="true">General</button></li>
+            <li><button type="button" data-panel="app-data" aria-selected="false">App data</button></li>
             <li>
-              <button type="button" data-section="games" aria-selected="false">Games</button>
-              <ul class="tree-child" id="game-tree"></ul>
+              <details id="games-navigation">
+                <summary>Games</summary>
+                <ul class="tree-child" id="game-navigation" aria-label="Game backup pages"></ul>
+                <p id="game-list-status" class="field-hint" role="status">Loading played and saved games...</p>
+              </details>
             </li>
-            <li><button type="button" data-section="encryption" aria-selected="false">Encryption</button></li>
+            <li><button type="button" data-panel="encryption" aria-selected="false">Encryption</button></li>
           </ul>
         </nav>
 
@@ -137,12 +143,6 @@
             <h3>App data</h3>
             <p>Choose which application data categories to include.</p>
             <div id="app-data-groups" aria-label="Application data categories"></div>
-          </section>
-
-          <section class="settings-panel" data-panel="games" aria-label="Games backup settings">
-            <h3>Games</h3>
-            <p id="game-list-status" class="field-hint" role="status">Loading played and saved games...</p>
-            <ul id="game-list" class="task-list" aria-label="Games to include"></ul>
           </section>
 
           <section class="settings-panel" data-panel="encryption" aria-label="Encryption backup settings">
@@ -185,9 +185,9 @@
   <script src="game-storage.js"></script>
   <script src="backups.js"></script>
   <script>
-    const sectionButtons = [...document.querySelectorAll(".settings-tree button[data-section]")];
-    const settingsPanels = [...document.querySelectorAll(".settings-panel[data-panel]")];
-    const gameTree = document.getElementById("game-tree");
+    const settingsTree = document.querySelector(".settings-tree");
+    const gameNavigation = document.getElementById("game-navigation");
+    const settingsContent = document.querySelector(".settings-content");
     const gameListStatus = document.getElementById("game-list-status");
     const progressRows = [...document.querySelectorAll("#backup-tasks > li")];
     const startButton = document.getElementById("start-backup");
@@ -204,10 +204,14 @@
     let activeController = null;
     const activeGatherTasks = new Set();
 
-    sectionButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        sectionButtons.forEach((item) => item.setAttribute("aria-selected", String(item === button)));
-        settingsPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === button.dataset.section));
+    settingsTree.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-panel]");
+      if (!button) return;
+      settingsTree.querySelectorAll("button[data-panel]").forEach((item) => {
+        item.setAttribute("aria-selected", String(item === button));
+      });
+      settingsContent.querySelectorAll(".settings-panel[data-panel]").forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.panel === button.dataset.panel);
       });
     });
 
@@ -236,7 +240,7 @@
       return [
         ...appDataGroupsContainer.querySelectorAll("input[data-app-data-group]"),
         includeSourceCheckbox,
-        ...gameTree.querySelectorAll("input[data-game-file]"),
+        ...settingsContent.querySelectorAll("input[data-game-file]"),
       ];
     }
 
@@ -254,11 +258,12 @@
     });
     appDataGroupsContainer.addEventListener("change", updateBackupEverythingState);
     includeSourceCheckbox.addEventListener("change", updateBackupEverythingState);
-    gameTree.addEventListener("change", updateBackupEverythingState);
+    settingsContent.addEventListener("change", updateBackupEverythingState);
     populateAppDataGroups();
 
     function addGameChoice(container, title, file, kind, checked) {
       const label = document.createElement("label");
+      label.className = "game-choice";
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = checked;
@@ -271,23 +276,42 @@
       container.append(label);
     }
 
+    function addGamePage(game, index) {
+      const title = game.title || game.file;
+      const panelId = `game-${index}`;
+      const navigationItem = document.createElement("li");
+      const navigationButton = document.createElement("button");
+      navigationButton.type = "button";
+      navigationButton.dataset.panel = panelId;
+      navigationButton.dataset.gameFile = game.file;
+      navigationButton.setAttribute("aria-selected", "false");
+      navigationButton.textContent = title;
+      navigationItem.append(navigationButton);
+      gameNavigation.append(navigationItem);
+
+      const panel = document.createElement("section");
+      panel.className = "settings-panel";
+      panel.dataset.panel = panelId;
+      panel.dataset.gameFile = game.file;
+      panel.setAttribute("aria-label", `${title} backup settings`);
+      const heading = document.createElement("h3");
+      heading.id = `game-page-title-${index}`;
+      heading.textContent = title;
+      panel.append(heading);
+      addGameChoice(panel, title, game.file, "code", Boolean(game.hasCode || game.played));
+      addGameChoice(panel, title, game.file, "data", Boolean(game.hasData));
+      settingsContent.append(panel);
+    }
+
     async function populateGames() {
       try {
         const games = await UtilitiesBackups.listGames();
-        gameTree.replaceChildren();
-        games.forEach((game) => {
-          const item = document.createElement("li");
-          const details = document.createElement("details");
-          const summary = document.createElement("summary");
-          const choices = document.createElement("div");
-          summary.textContent = game.title || game.file;
-          details.append(summary, choices);
-          addGameChoice(choices, game.title || game.file, game.file, "code", Boolean(game.hasCode || game.played));
-          addGameChoice(choices, game.title || game.file, game.file, "data", Boolean(game.hasData));
-          item.append(details);
-          gameTree.append(item);
+        gameNavigation.replaceChildren();
+        settingsContent.querySelectorAll(".settings-panel[data-game-file]").forEach((panel) => panel.remove());
+        games.forEach((game, index) => {
+          addGamePage(game, index);
         });
-        gameListStatus.textContent = games.length ? `${games.length} played or saved games found. Expand a game to choose its code and data.` : "No played or saved games were found.";
+        gameListStatus.textContent = games.length ? "" : "No played or saved games were found.";
         updateBackupEverythingState();
       } catch (error) {
         gameListStatus.textContent = error.message || "Could not load saved games.";
@@ -343,7 +367,7 @@
 
     function selectedGames() {
       const byFile = new Map();
-      gameTree.querySelectorAll("input[data-game-file]").forEach((input) => {
+      settingsContent.querySelectorAll("input[data-game-file]").forEach((input) => {
         const game = byFile.get(input.dataset.gameFile) || { file: input.dataset.gameFile, includeCode: false, includeData: false };
         if (input.dataset.kind === "code") game.includeCode = input.checked;
         if (input.dataset.kind === "data") game.includeData = input.checked;

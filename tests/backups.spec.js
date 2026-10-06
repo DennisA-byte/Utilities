@@ -198,7 +198,8 @@ test("downloads a backup containing selected game code and data", async ({ page 
     GameLibrary.recordRecent("upload-fixture");
   });
   await page.reload();
-  await page.locator("#game-tree summary").getByText("Fixture").click();
+  await page.locator("#games-navigation summary").click();
+  await page.getByRole("button", { name: "Fixture", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Include Fixture code" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Include Fixture data" })).toBeChecked();
 
@@ -217,7 +218,7 @@ test("downloads a backup containing selected game code and data", async ({ page 
     data: { score: "42" },
   }]);
   expect(backup.body.appData["utilities-pinned-games"]).toBe(JSON.stringify(["upload-fixture"]));
-  await expect(page.getByRole("status")).toContainText("Backup downloaded");
+  await expect(page.locator("#backup-status")).toContainText("Backup downloaded");
 });
 
 test("restores an uploaded backup from the Backups page", async ({ page }, testInfo) => {
@@ -269,7 +270,7 @@ test("cancels an in-progress backup and restores the action buttons", async ({ p
   await expect(page.getByRole("button", { name: "Start backup" })).toBeHidden();
   await page.getByRole("button", { name: "Cancel backup" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Backup cancelled");
+  await expect(page.locator("#backup-status")).toContainText("Backup cancelled");
   await expect(page.getByRole("button", { name: "Start backup" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Restore backup" })).toBeVisible();
 });
@@ -289,13 +290,14 @@ test("cancels an in-flight game fetch", async ({ page }) => {
     };
   });
   await page.goto("/backups.html");
-  await page.locator("#game-tree summary").getByText("slow-game").click();
+  await page.locator("#games-navigation summary").click();
+  await page.getByRole("button", { name: "slow-game", exact: true }).click();
   await page.getByRole("checkbox", { name: "Include slow-game code" }).check();
   await page.getByRole("button", { name: "Start backup" }).click();
   await expect(page.getByText("Getting data from slow-game")).toBeVisible();
   await page.getByRole("button", { name: "Cancel backup" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Backup cancelled");
+  await expect(page.locator("#backup-status")).toContainText("Backup cancelled");
   expect(await page.evaluate(() => window.__backupFetchSignal.aborted)).toBe(true);
 });
 
@@ -322,7 +324,7 @@ test("requires matching passwords and downloads an encrypted backup", async ({ p
   await page.getByLabel("Password", { exact: true }).fill("secure password");
   await page.getByLabel("Confirm password", { exact: true }).fill("different password");
   await page.getByRole("button", { name: "Start backup" }).click();
-  await expect(page.getByRole("status")).toContainText("passwords do not match");
+  await expect(page.locator("#backup-status")).toContainText("passwords do not match");
 
   await page.getByLabel("Confirm password", { exact: true }).fill("secure password");
   const downloadPromise = page.waitForEvent("download");
@@ -341,7 +343,7 @@ test("shows an error for an invalid restore file without changing app data", asy
   await page.goto("/backups.html");
   await page.evaluate(() => localStorage.setItem("utilities-pinned-games", JSON.stringify(["keep-me"])));
   await page.locator("#backup-file").setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("not json") });
-  await expect(page.getByRole("status")).toContainText("not valid backup JSON");
+  await expect(page.locator("#backup-status")).toContainText("not valid backup JSON");
   expect(await page.evaluate(() => localStorage.getItem("utilities-pinned-games"))).toBe(JSON.stringify(["keep-me"]));
 });
 
@@ -364,10 +366,10 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   const backupsFrame = popup.frameLocator('iframe[title="Backups"]');
   await expect(backupsFrame.getByRole("heading", { name: "Backups" })).toBeVisible();
   await expect(backupsFrame.getByRole("button", { name: "Start backup" })).toBeVisible();
-  await expect(backupsFrame.locator("#game-list-status")).toContainText("1 played or saved games found");
-  await backupsFrame.getByRole("button", { name: "Games" }).click();
-  const fixture = backupsFrame.locator("#game-tree details").first();
-  await fixture.locator("summary").click();
+  await expect(backupsFrame.locator("#game-navigation button")).toHaveCount(1);
+  await expect(backupsFrame.locator("#game-list-status")).toBeEmpty();
+  await backupsFrame.locator("#games-navigation summary").click();
+  await backupsFrame.getByRole("button", { name: "Compiled game fixture", exact: true }).click();
   await expect(backupsFrame.getByRole("checkbox", { name: "Include Compiled game fixture code" })).toBeVisible();
   await expect(backupsFrame.getByRole("checkbox", { name: "Include Compiled game fixture data" })).toBeVisible();
   await backupsFrame.getByRole("button", { name: "General" }).click();
@@ -400,9 +402,31 @@ test("shows saved games when an older storage script lacks the backup inventory 
   const backupsPage = await page.context().newPage();
   await backupsPage.goto("/backups.html");
 
-  await expect(backupsPage.locator("#game-list-status")).toContainText("1 played or saved games found");
-  await expect(backupsPage.locator("#game-tree summary")).toHaveText("Legacy saved game");
+  await expect(backupsPage.locator("#game-navigation button")).toHaveCount(1);
+  await expect(backupsPage.locator("#game-list-status")).toBeEmpty();
+  await expect(backupsPage.locator("#game-navigation button")).toHaveText("Legacy saved game");
   await expect(backupsPage.locator("#backup-status")).not.toContainText("getBackupGames is not a function");
+});
+
+test("opens a dedicated backup settings page for each game in the Games dropdown", async ({ page }) => {
+  await page.goto("/backups.html");
+  await page.evaluate(async () => {
+    await GameLibrary.saveGame("upload-page-fixture", "<title>Page fixture</title>", { title: "Page fixture", source: "upload" });
+    await GameLibrary.saveGameData("upload-page-fixture", { score: 5 });
+  });
+  await page.reload();
+
+  const gamesDropdown = page.locator("#games-navigation");
+  await expect(gamesDropdown.locator("summary")).toHaveText("Games");
+  await expect(page.locator(".settings-tree > ul > li > button", { hasText: "Games" })).toHaveCount(0);
+  await gamesDropdown.locator("summary").click();
+  await page.getByRole("button", { name: "Page fixture" }).click();
+
+  await expect(page.locator(".settings-panel.active h3")).toHaveText("Page fixture");
+  await expect(page.getByRole("checkbox", { name: "Include Page fixture code" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Include Page fixture data" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Include Page fixture code" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Include Page fixture data" })).toBeChecked();
 });
 
 test("backs up and restores everything selected from the master setting", async ({ page }, testInfo) => {
@@ -427,13 +451,10 @@ test("backs up and restores everything selected from the master setting", async 
   await page.getByRole("button", { name: "App data" }).click();
   await page.getByRole("checkbox", { name: "Back up everything, including all app data, game code, game data, and source" }).check();
   await expect(page.locator("#include-source")).toBeChecked();
-  await page.getByRole("button", { name: "Games" }).click();
-  const gameGroups = page.locator("#game-tree details");
-  await expect(gameGroups).toHaveCount(2);
-  for (const gameGroup of await gameGroups.all()) {
-    await gameGroup.locator("summary").click();
-  }
+  await page.locator("#games-navigation summary").click();
+  await expect(page.locator("#game-navigation button")).toHaveCount(2);
   for (const gameName of ["Backup Alpha", "Backup Beta"]) {
+    await page.getByRole("button", { name: gameName, exact: true }).click();
     await expect(page.getByRole("checkbox", { name: `Include ${gameName} code` })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: `Include ${gameName} data` })).toBeChecked();
   }
@@ -543,9 +564,8 @@ test("places the everything option above tabs and locks individual selections", 
   await expect(page.getByRole("checkbox", { name: "Offline update preferences" })).toBeDisabled();
   await expect(page.getByRole("checkbox", { name: "Other app settings" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Games" }).click();
-  const gameDetails = page.locator("#game-tree details").first();
-  await gameDetails.locator("summary").click();
+  await page.locator("#games-navigation summary").click();
+  await page.getByRole("button", { name: "Test game", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Include Test game code" })).toBeDisabled();
   await expect(page.getByRole("checkbox", { name: "Include Test game data" })).toBeDisabled();
 
