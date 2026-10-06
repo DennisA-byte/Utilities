@@ -147,7 +147,9 @@
   }
 
   function finishCachedBoot() {
-    if (sessionStorage.getItem(cacheMarker)) sessionStorage.removeItem(cacheMarker);
+    try {
+      if (sessionStorage.getItem(cacheMarker)) sessionStorage.removeItem(cacheMarker);
+    } catch (error) {}
   }
 
   function makeButton(button, close) {
@@ -295,10 +297,11 @@
   }
 
   function scheduleUpdateCheck() {
-    const checkedAt = Number(sessionStorage.getItem(updateCheckKey) || 0);
+    let checkedAt = 0;
+    try { checkedAt = Number(sessionStorage.getItem(updateCheckKey) || 0); } catch (error) {}
     const elapsed = Date.now() - checkedAt;
     if (elapsed >= updateInterval) {
-      sessionStorage.setItem(updateCheckKey, String(Date.now()));
+      try { sessionStorage.setItem(updateCheckKey, String(Date.now())); } catch (error) {}
       checkForUpdates();
     }
     window.setTimeout(scheduleUpdateCheck, Math.max(updateInterval - Math.max(elapsed, 0), 1000));
