@@ -45,7 +45,7 @@ test("creates a versioned backup from selected app and game data", async ({ page
     title: "Fixture",
     source: "upload",
     code: "<!doctype html><title>Fixture</title>",
-    data: { score: 42 },
+    data: { score: "42" },
   }]);
   expect(backup.header.checksum).toMatch(/^[a-f0-9]{64}$/);
   expect(backup.recoveryHtml).toContain("<!doctype html>");
@@ -79,7 +79,7 @@ test("restores selected backup data without clearing unrelated storage", async (
 
   expect(result.pinned).toBe(JSON.stringify(["upload-fixture"]));
   expect(result.unrelated).toBe("preserve me");
-  expect(result.gameData).toEqual({ score: 42 });
+  expect(result.gameData).toEqual({ score: "42" });
   expect(result.game.text).toBe("<title>Fixture</title>");
 });
 
@@ -149,4 +149,337 @@ test("recovery HTML decrypts and downloads an encrypted backup", async ({ page }
 
   expect(decrypted.header.note).toBe("recover me");
   expect(decrypted.format).toBe("utilities-backup");
+});
+
+test("keeps game localStorage data isolated by game", async ({ page }) => {
+  await page.route("https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/**", async (route) => {
+    const filename = new URL(route.request().url()).pathname.split("/").pop().replace(/\.html$/, "");
+    await route.fulfill({
+      contentType: "text/html",
+      body: `<html><head><script>localStorage.setItem("owner", ${JSON.stringify(filename)});</script></head><body></body></html>`,
+    });
+  });
+  await page.goto("/index.html");
+  await page.evaluate(() => {
+    ["alpha", "beta"].forEach((file) => {
+      const button = document.createElement("button");
+      button.id = `play-${file}`;
+      button.textContent = `Play ${file}`;
+      button.onclick = () => GameLibrary.play(file);
+      document.body.appendChild(button);
+    });
+  });
+
+  const alphaPopupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Play alpha" }).click();
+  const alphaPopup = await alphaPopupPromise;
+  await expect.poll(() => alphaPopup.evaluate(() => localStorage.getItem("owner"))).toBe("alpha");
+  const betaPopupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Play beta" }).click();
+  const betaPopup = await betaPopupPromise;
+  await expect.poll(() => betaPopup.evaluate(() => localStorage.getItem("owner"))).toBe("beta");
+
+  const gameData = await page.evaluate(async () => ({
+    alpha: await GameLibrary.getGameData("alpha"),
+    beta: await GameLibrary.getGameData("beta"),
+    parentOwner: localStorage.getItem("owner"),
+  }));
+  expect(gameData).toEqual({ alpha: { owner: "alpha" }, beta: { owner: "beta" }, parentOwner: null });
+  await alphaPopup.close();
+  await betaPopup.close();
+});
+
+test("downloads a backup containing selected game code and data", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["upload-fixture"]));
+    await GameLibrary.saveGame("upload-fixture", "<title>Fixture</title>", { title: "Fixture", source: "upload" });
+    await GameLibrary.saveGameData("upload-fixture", { score: 42 });
+    GameLibrary.recordRecent("upload-fixture");
+  });
+  await page.reload();
+  await page.locator("#game-tree summary").getByText("Fixture").click();
+  await expect(page.getByRole("checkbox", { name: "Include Fixture code" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Include Fixture data" })).toBeChecked();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("selected-backup.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+
+  expect(backup.body.games).toEqual([{
+    file: "upload-fixture",
+    title: "Fixture",
+    source: "upload",
+    code: "<title>Fixture</title>",
+    data: { score: "42" },
+  }]);
+  expect(backup.body.appData["utilities-pinned-games"]).toBe(JSON.stringify(["upload-fixture"]));
+  await expect(page.getByRole("status")).toContainText("Backup downloaded");
+});
+
+test("restores an uploaded backup from the Backups page", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  const backupText = await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["before"]));
+    await GameLibrary.saveGame("upload-fixture", "<title>Restored</title>", { title: "Restored", source: "upload" });
+    await GameLibrary.saveGameData("upload-fixture", { score: 64 });
+    return UtilitiesBackups.createBackup({
+      includeAppData: true,
+      games: [{ file: "upload-fixture", includeCode: true, includeData: true }],
+    });
+  });
+  const backupPath = testInfo.outputPath("restore-source.json");
+  await testInfo.attach("restore-source", { body: backupText, contentType: "application/json" });
+  const { writeFile } = require("node:fs/promises");
+  await writeFile(backupPath, backupText);
+  await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["current"]));
+    localStorage.setItem("unrelated-user-data", "keep");
+    await GameLibrary.saveGameData("upload-fixture", { score: 1 });
+  });
+
+  await page.locator("#backup-file").setInputFiles(backupPath);
+  await expect(page.locator("#backup-status")).toContainText("Backup restored");
+  const restored = await page.evaluate(async () => ({
+    pinned: localStorage.getItem("utilities-pinned-games"),
+    unrelated: localStorage.getItem("unrelated-user-data"),
+    gameData: await GameLibrary.getGameData("upload-fixture"),
+    game: await GameLibrary.getSavedRecord("upload-fixture"),
+  }));
+
+  expect(restored.pinned).toBe(JSON.stringify(["before"]));
+  expect(restored.unrelated).toBe("keep");
+  expect(restored.gameData).toEqual({ score: "64" });
+  expect(restored.game.text).toBe("<title>Restored</title>");
+});
+
+test("cancels an in-progress backup and restores the action buttons", async ({ page }) => {
+  await page.goto("/backups.html");
+  await page.evaluate(() => {
+    UtilitiesBackups.createBackup = (_selection, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new DOMException("Backup cancelled.", "AbortError")), { once: true });
+    });
+  });
+
+  await page.getByRole("button", { name: "Start backup" }).click();
+  await expect(page.getByRole("button", { name: "Cancel backup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start backup" })).toBeHidden();
+  await page.getByRole("button", { name: "Cancel backup" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Backup cancelled");
+  await expect(page.getByRole("button", { name: "Start backup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restore backup" })).toBeVisible();
+});
+
+test("cancels an in-flight game fetch", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("utilities-played-games", JSON.stringify(["slow-game"]));
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, options = {}) => {
+      if (String(input).includes("slow-game.html")) {
+        window.__backupFetchSignal = options.signal;
+        return new Promise((resolve, reject) => {
+          options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+        });
+      }
+      return originalFetch(input, options);
+    };
+  });
+  await page.goto("/backups.html");
+  await page.locator("#game-tree summary").getByText("slow-game").click();
+  await page.getByRole("checkbox", { name: "Include slow-game code" }).check();
+  await page.getByRole("button", { name: "Start backup" }).click();
+  await expect(page.getByText("Getting data from slow-game")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel backup" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Backup cancelled");
+  expect(await page.evaluate(() => window.__backupFetchSignal.aborted)).toBe(true);
+});
+
+test("includes an offline single-file source bundle when selected", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const backup = await page.evaluate(async () => JSON.parse(await UtilitiesBackups.createBackup({
+    includeAppData: false,
+    includeSource: true,
+    games: [],
+  })));
+
+  expect(backup.header.included.sourceCode).toBe(true);
+  expect(backup.body.sourceCode).toContain("Utilities Source Bundle");
+  expect(backup.body.sourceCode).toContain("backups.html");
+  expect(backup.body.sourceCode).toContain("utilities-game-library");
+  expect(backup.body.sourceCode).not.toContain("<script src=\"game-storage.js\">");
+});
+
+test("requires matching passwords and downloads an encrypted backup", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  await page.getByRole("button", { name: "Encryption" }).click();
+  await page.getByRole("checkbox", { name: "Encrypt this backup" }).check();
+  await page.getByLabel("Password", { exact: true }).fill("secure password");
+  await page.getByLabel("Confirm password", { exact: true }).fill("different password");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  await expect(page.getByRole("status")).toContainText("passwords do not match");
+
+  await page.getByLabel("Confirm password", { exact: true }).fill("secure password");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("encrypted-ui-backup.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+
+  expect(backup.encrypted).toBe(true);
+  expect(backup.encryption.algorithm).toBe("AES-GCM");
+  expect(backup.ciphertext).toBeTruthy();
+});
+
+test("shows an error for an invalid restore file without changing app data", async ({ page }) => {
+  await page.goto("/backups.html");
+  await page.evaluate(() => localStorage.setItem("utilities-pinned-games", JSON.stringify(["keep-me"])));
+  await page.locator("#backup-file").setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("not json") });
+  await expect(page.getByRole("status")).toContainText("not valid backup JSON");
+  expect(await page.evaluate(() => localStorage.getItem("utilities-pinned-games"))).toBe(JSON.stringify(["keep-me"]));
+});
+
+test("opens Backups and creates a source backup in the compiled app", async ({ page }, testInfo) => {
+  await page.goto("/settings.html");
+  await page.getByRole("button", { name: "Source & downloads" }).click();
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("link", { name: "Open compiled app" }).click();
+  const popup = await popupPromise;
+  await expect(popup.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
+  await popup.getByRole("button", { name: "Settings" }).click();
+  const settingsFrame = popup.frameLocator('iframe[title="Settings"]');
+  await settingsFrame.getByRole("link", { name: "Backups" }).click();
+  const backupsFrame = popup.frameLocator('iframe[title="Backups"]');
+  await expect(backupsFrame.getByRole("heading", { name: "Backups" })).toBeVisible();
+  await expect(backupsFrame.getByRole("button", { name: "Start backup" })).toBeVisible();
+  await backupsFrame.getByRole("checkbox", { name: "Include source code in a single file" }).check();
+  const downloadPromise = popup.waitForEvent("download");
+  await backupsFrame.getByRole("button", { name: "Start backup" }).click();
+  await expect(backupsFrame.locator("#backup-status")).toContainText("Backup downloaded");
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("compiled-source-backup.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+  expect(backup.body.sourceCode).toContain("Utilities Source Bundle");
+  expect(backup.body.sourceCode).toContain("backups.html");
+  await backupsFrame.getByRole("link", { name: "Back to Settings" }).click();
+  await expect(settingsFrame.getByRole("link", { name: "Backups" })).toBeVisible();
+  await popup.close();
+});
+
+test("backs up and restores everything selected from the master setting", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  const expectedAppData = {
+    "utilities-pinned-games": JSON.stringify(["backup-alpha"]),
+    "utilities-recent-games": JSON.stringify(["backup-alpha", "cl1"]),
+    "utilities-played-games": JSON.stringify(["backup-alpha", "cl1"]),
+    "utilities-offline-update-preferences": JSON.stringify({ "backup-alpha": "always" }),
+    "utilities-custom-setting": "custom-value",
+  };
+  await page.evaluate(async (appData) => {
+    Object.entries(appData).forEach(([key, value]) => localStorage.setItem(key, value));
+    localStorage.setItem("utilities-cached-version", "large cache is not backup data");
+    await GameLibrary.saveGame("backup-alpha", "<!doctype html><title>Backup Alpha</title>", { title: "Backup Alpha", source: "upload" });
+    await GameLibrary.saveGameData("backup-alpha", { score: 123, level: "three" });
+    await GameLibrary.saveGame("cl1", "<!doctype html><title>Backup Beta</title>", { title: "Backup Beta", source: "library" });
+    await GameLibrary.saveGameData("cl1", { score: 456, level: "four" });
+  }, expectedAppData);
+  await page.reload();
+
+  await page.getByRole("button", { name: "App data" }).click();
+  await page.getByRole("checkbox", { name: "Back up everything, including all app data, game code, game data, and source" }).check();
+  await expect(page.locator("#include-source")).toBeChecked();
+  await page.getByRole("button", { name: "Games" }).click();
+  const gameGroups = page.locator("#game-tree details");
+  await expect(gameGroups).toHaveCount(2);
+  for (const gameGroup of await gameGroups.all()) {
+    await gameGroup.locator("summary").click();
+  }
+  for (const gameName of ["Backup Alpha", "Backup Beta"]) {
+    await expect(page.getByRole("checkbox", { name: `Include ${gameName} code` })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: `Include ${gameName} data` })).toBeChecked();
+  }
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("everything-backup.json");
+  await download.saveAs(backupPath);
+  const backupText = await readFile(backupPath, "utf8");
+  const backup = JSON.parse(backupText);
+  expect(backup.body.appData).toEqual(expectedAppData);
+  expect(backup.body.games.map(({ file, code, data }) => ({ file, code, data })).sort((a, b) => a.file.localeCompare(b.file))).toEqual([
+    { file: "backup-alpha", code: "<!doctype html><title>Backup Alpha</title>", data: { score: "123", level: "three" } },
+    { file: "cl1", code: "<!doctype html><title>Backup Beta</title>", data: { score: "456", level: "four" } },
+  ]);
+  expect(backup.body.sourceCode).toContain("Utilities Source Bundle");
+
+  await page.evaluate(async () => {
+    localStorage.clear();
+    await GameLibrary.removeGame("backup-alpha");
+    await GameLibrary.removeGame("cl1");
+    localStorage.setItem("unrelated-user-data", "keep this value");
+  });
+  await page.locator("#backup-file").setInputFiles({
+    name: "everything-backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(backupText),
+  });
+  await expect(page.locator("#backup-status")).toContainText("Backup restored");
+
+  const restored = await page.evaluate(async () => {
+    const appDataKeys = [
+      "utilities-pinned-games",
+      "utilities-recent-games",
+      "utilities-played-games",
+      "utilities-offline-update-preferences",
+      "utilities-custom-setting",
+    ];
+    return {
+      appData: Object.fromEntries(appDataKeys.map((key) => [key, localStorage.getItem(key)])),
+      cachedVersion: localStorage.getItem("utilities-cached-version"),
+      unrelated: localStorage.getItem("unrelated-user-data"),
+      alpha: { record: await GameLibrary.getSavedRecord("backup-alpha"), data: await GameLibrary.getGameData("backup-alpha") },
+      beta: { record: await GameLibrary.getSavedRecord("cl1"), data: await GameLibrary.getGameData("cl1") },
+    };
+  });
+  expect(restored.appData).toEqual(expectedAppData);
+  expect(restored.cachedVersion).toBeNull();
+  expect(restored.unrelated).toBe("keep this value");
+  expect(restored.alpha.record.text).toBe("<!doctype html><title>Backup Alpha</title>");
+  expect(restored.alpha.record.source).toBe("upload");
+  expect(restored.alpha.data).toEqual({ score: "123", level: "three" });
+  expect(restored.beta.record.text).toBe("<!doctype html><title>Backup Beta</title>");
+  expect(restored.beta.record.source).toBe("library");
+  expect(restored.beta.data).toEqual({ score: "456", level: "four" });
+  expect(restored.beta.record.source).toBe("library");
+});
+
+test("backs up only the selected application data category", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  await page.evaluate(() => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["selected-game"]));
+    localStorage.setItem("utilities-offline-update-preferences", JSON.stringify({ "selected-game": "always" }));
+    localStorage.setItem("utilities-custom-setting", "exclude me");
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "App data" }).click();
+  await page.getByRole("checkbox", { name: "Library organization" }).uncheck();
+  await page.getByRole("checkbox", { name: "Other app settings" }).uncheck();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("selected-app-data.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+  expect(backup.body.appData).toEqual({
+    "utilities-offline-update-preferences": JSON.stringify({ "selected-game": "always" }),
+  });
 });

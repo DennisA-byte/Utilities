@@ -74,6 +74,14 @@
     .task-list progress { align-self: center; grid-column: 2; grid-row: 1 / span 2; }
     .task-percent { align-self: center; color: var(--muted); font: 12px Arial, sans-serif; grid-column: 3; grid-row: 1 / span 2; text-align: right; }
     .task-list [hidden] { display: none; }
+    .task-status { white-space: pre-line; }
+    #game-tree details { color: var(--muted); font: 13px Arial, sans-serif; margin: 4px 0 4px 14px; }
+    #game-tree summary { cursor: pointer; overflow-wrap: anywhere; padding: 5px 0; }
+    #game-tree label { align-items: center; display: flex; gap: 6px; margin: 5px 0 5px 10px; }
+    #game-tree input { accent-color: var(--accent); }
+    .backup-status { color: var(--muted); min-height: 24px; }
+    .backup-status[data-state="failed"] { color: var(--failure); }
+    .backup-status[data-state="complete"] { color: var(--success); }
 
     @media (max-width: 700px) {
       .backup-shell { padding: 22px 16px 36px; }
@@ -122,8 +130,9 @@
 
           <section class="settings-panel" data-panel="app-data" aria-label="App data backup settings">
             <h3>App data</h3>
-            <p>Choose which application settings and saved library data to include.</p>
-            <label class="field-row"><input id="include-app-data" type="checkbox" checked><span>Include app data</span></label>
+            <label class="field-row"><input id="backup-everything" type="checkbox"><span>Back up everything, including all app data, game code, game data, and source</span></label>
+            <p>Choose which application data categories to include.</p>
+            <div id="app-data-groups" aria-label="Application data categories"></div>
           </section>
 
           <section class="settings-panel" data-panel="games" aria-label="Games backup settings">
@@ -165,7 +174,280 @@
         <li data-stage="download" data-state="pending"><span class="task-label">Downloading</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
         <li data-stage="cleanup" data-state="pending"><span class="task-label">Cleaning up</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
       </ol>
+      <p class="backup-status" id="backup-status" role="status" aria-live="polite"></p>
     </section>
   </main>
+  <script src="files.js"></script>
+  <script src="game-storage.js"></script>
+  <script src="backups.js"></script>
+  <script>
+    const sectionButtons = [...document.querySelectorAll(".settings-tree button[data-section]")];
+    const settingsPanels = [...document.querySelectorAll(".settings-panel[data-panel]")];
+    const gameTree = document.getElementById("game-tree");
+    const gameListStatus = document.getElementById("game-list-status");
+    const progressRows = [...document.querySelectorAll("#backup-tasks > li")];
+    const startButton = document.getElementById("start-backup");
+    const restoreButton = document.getElementById("restore-backup");
+    const cancelButton = document.getElementById("cancel-backup");
+    const backupFileInput = document.getElementById("backup-file");
+    const backupStatus = document.getElementById("backup-status");
+    const encryptCheckbox = document.getElementById("encrypt-backup");
+    const passwordInput = document.getElementById("backup-password");
+    const passwordConfirmInput = document.getElementById("backup-password-confirm");
+    const backupEverythingCheckbox = document.getElementById("backup-everything");
+    const appDataGroupsContainer = document.getElementById("app-data-groups");
+    const includeSourceCheckbox = document.getElementById("include-source");
+    let activeController = null;
+    const activeGatherTasks = new Set();
+
+    sectionButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        sectionButtons.forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+        settingsPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === button.dataset.section));
+      });
+    });
+
+    encryptCheckbox.addEventListener("change", () => {
+      passwordInput.disabled = !encryptCheckbox.checked;
+      passwordConfirmInput.disabled = !encryptCheckbox.checked;
+    });
+
+    function populateAppDataGroups() {
+      UtilitiesBackups.listAppDataGroups().forEach((group) => {
+        const label = document.createElement("label");
+        label.className = "field-row";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = true;
+        input.dataset.appDataGroup = group.id;
+        input.setAttribute("aria-label", group.label);
+        const description = document.createElement("span");
+        description.textContent = `${group.label}: ${group.description}`;
+        label.append(input, description);
+        appDataGroupsContainer.append(label);
+      });
+    }
+
+    function allBackupChoices() {
+      return [
+        ...appDataGroupsContainer.querySelectorAll("input[data-app-data-group]"),
+        includeSourceCheckbox,
+        ...gameTree.querySelectorAll("input[data-game-file]"),
+      ];
+    }
+
+    function updateBackupEverythingState() {
+      const choices = allBackupChoices();
+      const selectedCount = choices.filter((choice) => choice.checked).length;
+      backupEverythingCheckbox.checked = choices.length > 0 && selectedCount === choices.length;
+      backupEverythingCheckbox.indeterminate = selectedCount > 0 && selectedCount < choices.length;
+    }
+
+    backupEverythingCheckbox.addEventListener("change", () => {
+      allBackupChoices().forEach((choice) => { choice.checked = backupEverythingCheckbox.checked; });
+      backupEverythingCheckbox.indeterminate = false;
+    });
+    appDataGroupsContainer.addEventListener("change", updateBackupEverythingState);
+    includeSourceCheckbox.addEventListener("change", updateBackupEverythingState);
+    gameTree.addEventListener("change", updateBackupEverythingState);
+    populateAppDataGroups();
+
+    function addGameChoice(container, title, file, kind, checked) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = checked;
+      input.dataset.gameFile = file;
+      input.dataset.kind = kind;
+      input.setAttribute("aria-label", `Include ${title} ${kind}`);
+      const text = document.createElement("span");
+      text.textContent = kind === "code" ? "Code" : "Game data";
+      label.append(input, text);
+      container.append(label);
+    }
+
+    async function populateGames() {
+      try {
+        const games = await UtilitiesBackups.listGames();
+        gameTree.replaceChildren();
+        games.forEach((game) => {
+          const item = document.createElement("li");
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          const choices = document.createElement("div");
+          summary.textContent = game.title || game.file;
+          details.append(summary, choices);
+          addGameChoice(choices, game.title || game.file, game.file, "code", Boolean(game.hasCode || game.played));
+          addGameChoice(choices, game.title || game.file, game.file, "data", Boolean(game.hasData));
+          item.append(details);
+          gameTree.append(item);
+        });
+        gameListStatus.textContent = games.length ? `${games.length} played or saved games found. Expand a game to choose its code and data.` : "No played or saved games were found.";
+        updateBackupEverythingState();
+      } catch (error) {
+        gameListStatus.textContent = error.message || "Could not load saved games.";
+      }
+    }
+
+    function updateOverallProgress() {
+      const visibleRows = progressRows.filter((row) => !row.hidden);
+      const value = visibleRows.reduce((total, row) => total + Number(row.querySelector("progress").value), 0) / Math.max(visibleRows.length, 1);
+      document.getElementById("overall-progress").value = value;
+      document.getElementById("overall-percent").textContent = `${Math.round(value)}%`;
+    }
+
+    function updateStage(name, value, message, state = "running") {
+      const row = progressRows.find((item) => item.dataset.stage === name);
+      if (!row) return;
+      row.hidden = false;
+      row.dataset.state = state;
+      row.querySelector("progress").value = value;
+      row.querySelector(".task-percent").textContent = `${Math.round(value)}%`;
+      const status = row.querySelector(".task-status");
+      if (name === "gather" && message?.startsWith("Getting data from ")) {
+        activeGatherTasks.add(message);
+        status.textContent = [...activeGatherTasks].join("\n");
+      } else if (name === "gather" && message?.startsWith("Completed ")) {
+        const title = message.slice("Completed ".length);
+        [...activeGatherTasks].forEach((task) => { if (task.endsWith(title)) activeGatherTasks.delete(task); });
+        status.textContent = [...activeGatherTasks, message].slice(-5).join("\n");
+      } else {
+        status.textContent = message || "";
+      }
+      updateOverallProgress();
+    }
+
+    function resetProgress() {
+      activeGatherTasks.clear();
+      progressRows.forEach((row) => {
+        row.dataset.state = "pending";
+        row.querySelector("progress").value = 0;
+        row.querySelector(".task-percent").textContent = "0%";
+        row.querySelector(".task-status").textContent = "Waiting";
+        if (row.dataset.stage === "encrypt") row.hidden = !encryptCheckbox.checked;
+      });
+      document.querySelector(".progress-summary").dataset.state = "pending";
+      updateOverallProgress();
+    }
+
+    function setOperationActive(active, cancellable = active) {
+      startButton.hidden = active;
+      restoreButton.hidden = active;
+      cancelButton.hidden = !cancellable;
+    }
+
+    function selectedGames() {
+      const byFile = new Map();
+      gameTree.querySelectorAll("input[data-game-file]").forEach((input) => {
+        const game = byFile.get(input.dataset.gameFile) || { file: input.dataset.gameFile, includeCode: false, includeData: false };
+        if (input.dataset.kind === "code") game.includeCode = input.checked;
+        if (input.dataset.kind === "data") game.includeData = input.checked;
+        byFile.set(game.file, game);
+      });
+      return [...byFile.values()];
+    }
+
+    function downloadText(filename, text, type = "application/json") {
+      const url = URL.createObjectURL(new Blob([text], { type }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function startBackup() {
+      if (encryptCheckbox.checked && (!passwordInput.value || passwordInput.value !== passwordConfirmInput.value)) {
+        backupStatus.dataset.state = "failed";
+        backupStatus.textContent = passwordInput.value ? "The passwords do not match." : "Enter and confirm a backup password.";
+        return;
+      }
+      activeController = new AbortController();
+      resetProgress();
+      setOperationActive(true);
+      backupStatus.dataset.state = "running";
+      backupStatus.textContent = "Preparing backup...";
+      try {
+        updateStage("prepare", 100, "Ready", "complete");
+        updateStage("gather", 0, "Starting", "running");
+        const text = await UtilitiesBackups.createBackup({
+          note: document.getElementById("backup-note").value,
+          appDataGroups: [...appDataGroupsContainer.querySelectorAll("input[data-app-data-group]:checked")].map((input) => input.dataset.appDataGroup),
+          includeSource: document.getElementById("include-source").checked,
+          games: selectedGames(),
+        }, {
+          signal: activeController.signal,
+          password: encryptCheckbox.checked ? passwordInput.value : null,
+          onStage: ({ stage, percent, message, state }) => updateStage(stage, percent, message, state),
+          onProgress: ({ current, total, message }) => updateStage("gather", total ? current / total * 100 : 100, message, "running"),
+        });
+        updateStage("gather", 100, "Data gathered", "complete");
+        updateStage("download", 35, "Starting file download", "running");
+        downloadText(`utilities-backup-${new Date().toISOString().slice(0, 10)}.json`, text);
+        updateStage("download", 100, "Download started", "complete");
+        updateStage("cleanup", 100, "Temporary data cleared", "complete");
+        document.querySelector(".progress-summary").dataset.state = "complete";
+        backupStatus.dataset.state = "complete";
+        backupStatus.textContent = "Backup downloaded.";
+      } catch (error) {
+        const cancelled = error.name === "AbortError";
+        const activeRow = progressRows.find((row) => row.dataset.state === "running");
+        if (activeRow) {
+          activeRow.dataset.state = cancelled ? "pending" : "failed";
+          activeRow.querySelector(".task-status").textContent = cancelled ? "Cancelled" : error.message;
+        }
+        document.querySelector(".progress-summary").dataset.state = cancelled ? "pending" : "failed";
+        backupStatus.dataset.state = cancelled ? "" : "failed";
+        backupStatus.textContent = cancelled ? "Backup cancelled." : error.message || "Backup failed.";
+      } finally {
+        activeController = null;
+        setOperationActive(false);
+        updateOverallProgress();
+      }
+    }
+
+    async function restoreBackup() {
+      activeController = new AbortController();
+      resetProgress();
+      setOperationActive(true, false);
+      backupStatus.dataset.state = "running";
+      try {
+        updateStage("prepare", 100, "Ready", "complete");
+        updateStage("gather", 100, "Backup file read", "complete");
+        updateStage("create", 50, "Verifying backup", "running");
+        const text = await backupFileInput.files[0].text();
+        await UtilitiesBackups.restoreBackup(text, encryptCheckbox.checked ? passwordInput.value : undefined);
+        updateStage("create", 100, "Backup verified and restored", "complete");
+        updateStage("download", 100, "Restore complete", "complete");
+        updateStage("cleanup", 100, "Storage updated", "complete");
+        document.querySelector(".progress-summary").dataset.state = "complete";
+        backupStatus.dataset.state = "complete";
+        backupStatus.textContent = "Backup restored.";
+        await populateGames();
+      } catch (error) {
+        const activeRow = progressRows.find((row) => row.dataset.state === "running");
+        if (activeRow) {
+          activeRow.dataset.state = error.name === "AbortError" ? "pending" : "failed";
+          activeRow.querySelector(".task-status").textContent = error.message;
+        }
+        document.querySelector(".progress-summary").dataset.state = "failed";
+        backupStatus.dataset.state = "failed";
+        backupStatus.textContent = error.message || "Restore failed.";
+      } finally {
+        backupFileInput.value = "";
+        activeController = null;
+        setOperationActive(false);
+        updateOverallProgress();
+      }
+    }
+
+    startButton.addEventListener("click", startBackup);
+    restoreButton.addEventListener("click", () => backupFileInput.click());
+    cancelButton.addEventListener("click", () => activeController?.abort());
+    backupFileInput.addEventListener("change", () => {
+      if (backupFileInput.files[0]) restoreBackup();
+    });
+    populateGames();
+  </script>
 </body>
 </html>
