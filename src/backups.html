@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backups | Utilities</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f6f2e8;
+      --muted: #b9b4a7;
+      --accent: #f0b35b;
+      --panel: #252b35;
+      --line: #424b58;
+      --sidebar: #1a1f28;
+      --soft: #1f2631;
+      --progress: #68a9e8;
+      --success: #72d572;
+      --failure: #ed7676;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #171b22;
+      color: var(--ink);
+      font: 16px/1.5 Georgia, serif;
+    }
+
+    .backup-shell { margin: 0 auto; max-width: 1180px; padding: 28px 32px 48px; }
+    .backup-header { align-items: center; display: flex; gap: 16px; margin-bottom: 30px; }
+    .backup-header a { color: var(--muted); font: 700 14px Arial, sans-serif; }
+    .backup-header h1 { font-size: 32px; line-height: 1.1; margin: 0; }
+    .backup-settings h2, .backup-progress h2 { font-size: 22px; margin: 0 0 16px; }
+    .settings-layout { display: grid; grid-template-columns: minmax(190px, 240px) minmax(0, 1fr); min-height: 340px; }
+    .settings-tree { border-right: 1px solid var(--line); padding-right: 18px; }
+    .settings-tree ul { list-style: none; margin: 0; padding: 0; }
+    .settings-tree li + li { margin-top: 4px; }
+    .settings-tree button { background: transparent; border: 0; border-radius: 3px; color: var(--muted); cursor: pointer; font: 700 14px Arial, sans-serif; padding: 9px 10px; text-align: left; width: 100%; }
+    .settings-tree button[aria-selected="true"] { background: var(--soft); color: var(--ink); }
+    .settings-tree .tree-child { margin-left: 14px; }
+    .settings-panel { display: none; max-width: 700px; padding: 0 24px; }
+    .settings-panel.active { display: block; }
+    .settings-panel h3 { font-size: 18px; margin: 0 0 18px; }
+    .settings-panel p, .field-hint { color: var(--muted); margin: 0 0 16px; }
+    .field-row { align-items: flex-start; display: flex; gap: 10px; margin: 14px 0; }
+    .field-row input[type="checkbox"] { accent-color: var(--accent); height: 18px; margin: 2px 0 0; width: 18px; }
+    .field-row label { flex: 1; }
+    .field-row textarea, .field-row input[type="password"] { background: var(--soft); border: 1px solid var(--line); border-radius: 3px; color: var(--ink); display: block; margin-top: 6px; padding: 10px; width: 100%; }
+    .field-row textarea { min-height: 84px; resize: vertical; }
+    .backup-actions { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 24px 0 34px; }
+    .backup-actions button { background: var(--accent); border: 1px solid var(--accent); border-radius: 4px; color: #201a12; cursor: pointer; font: 700 15px Arial, sans-serif; min-height: 48px; padding: 12px 16px; }
+    .backup-actions button.secondary { background: var(--panel); border-color: var(--line); color: var(--ink); }
+    .backup-actions button.cancel { background: var(--failure); border-color: var(--failure); color: #241212; grid-column: 1 / -1; }
+    .backup-actions button[hidden] { display: none; }
+    .backup-progress { border-top: 1px solid var(--line); padding-top: 24px; }
+    .progress-summary { display: grid; gap: 10px; grid-template-columns: 1fr auto; margin-bottom: 20px; }
+    .progress-summary label { font-weight: 700; }
+    progress { appearance: none; background: var(--soft); border: 1px solid var(--line); border-radius: 2px; height: 14px; overflow: hidden; width: 100%; }
+    progress::-webkit-progress-bar { background: var(--soft); }
+    progress::-webkit-progress-value { background: var(--progress); }
+    progress::-moz-progress-bar { background: var(--progress); }
+    [data-state="complete"] progress::-webkit-progress-value { background: var(--success); }
+    [data-state="complete"] progress::-moz-progress-bar { background: var(--success); }
+    [data-state="failed"] progress::-webkit-progress-value { background: var(--failure); }
+    [data-state="failed"] progress::-moz-progress-bar { background: var(--failure); }
+    [data-state="failed"] { color: var(--failure); }
+    .task-list { border-top: 1px solid var(--line); list-style: none; margin: 0; padding: 0; }
+    .task-list li { border-bottom: 1px solid var(--line); display: grid; gap: 6px 18px; grid-template-columns: minmax(160px, 1fr) minmax(180px, 2fr) 46px; padding: 12px 0; }
+    .task-label { font: 700 14px Arial, sans-serif; }
+    .task-status { color: var(--muted); font-size: 14px; grid-column: 1; }
+    .task-list progress { align-self: center; grid-column: 2; grid-row: 1 / span 2; }
+    .task-percent { align-self: center; color: var(--muted); font: 12px Arial, sans-serif; grid-column: 3; grid-row: 1 / span 2; text-align: right; }
+    .task-list [hidden] { display: none; }
+
+    @media (max-width: 700px) {
+      .backup-shell { padding: 22px 16px 36px; }
+      .settings-layout { grid-template-columns: 1fr; }
+      .settings-tree { border-bottom: 1px solid var(--line); border-right: 0; margin-bottom: 20px; padding: 0 0 16px; }
+      .settings-tree ul { display: flex; flex-wrap: wrap; gap: 4px; }
+      .settings-tree li + li { margin: 0; }
+      .settings-panel { padding: 0; }
+      .task-list li { grid-template-columns: minmax(120px, 1fr) minmax(100px, 1fr) 42px; }
+      .task-status { grid-column: 1 / -1; }
+      .task-list progress { grid-column: 2; grid-row: 1; }
+      .task-percent { grid-column: 3; grid-row: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="backup-shell">
+    <header class="backup-header">
+      <a href="settings.html">Back to Settings</a>
+      <h1>Backups</h1>
+    </header>
+
+    <section class="backup-settings" aria-labelledby="backup-settings-heading">
+      <h2 id="backup-settings-heading">Backup settings</h2>
+      <div class="settings-layout">
+        <nav class="settings-tree" aria-label="Backup settings sections">
+          <ul>
+            <li><button type="button" data-section="general" aria-selected="true">General</button></li>
+            <li><button type="button" data-section="app-data" aria-selected="false">App data</button></li>
+            <li>
+              <button type="button" data-section="games" aria-selected="false">Games</button>
+              <ul class="tree-child" id="game-tree"></ul>
+            </li>
+            <li><button type="button" data-section="encryption" aria-selected="false">Encryption</button></li>
+          </ul>
+        </nav>
+
+        <div class="settings-content">
+          <section class="settings-panel active" data-panel="general" aria-label="General backup settings">
+            <h3>General</h3>
+            <label class="field-row">
+              <span>Note to include<textarea id="backup-note" maxlength="500" placeholder="Add a note for this backup"></textarea></span>
+            </label>
+            <label class="field-row"><input id="include-source" type="checkbox"><span>Include source code in a single file</span></label>
+          </section>
+
+          <section class="settings-panel" data-panel="app-data" aria-label="App data backup settings">
+            <h3>App data</h3>
+            <p>Choose which application settings and saved library data to include.</p>
+            <label class="field-row"><input id="include-app-data" type="checkbox" checked><span>Include app data</span></label>
+          </section>
+
+          <section class="settings-panel" data-panel="games" aria-label="Games backup settings">
+            <h3>Games</h3>
+            <p id="game-list-status" class="field-hint" role="status">Loading played and saved games...</p>
+            <ul id="game-list" class="task-list" aria-label="Games to include"></ul>
+          </section>
+
+          <section class="settings-panel" data-panel="encryption" aria-label="Encryption backup settings">
+            <h3>Encryption</h3>
+            <label class="field-row"><input id="encrypt-backup" type="checkbox"><span>Encrypt this backup</span></label>
+            <label class="field-row"><span>Password<input id="backup-password" type="password" autocomplete="new-password" disabled></span></label>
+            <label class="field-row"><span>Confirm password<input id="backup-password-confirm" type="password" autocomplete="new-password" disabled></span></label>
+            <p class="field-hint">A forgotten password cannot be recovered. Keep it somewhere safe.</p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <div class="backup-actions" aria-label="Backup actions">
+      <button id="start-backup" type="button">Start backup</button>
+      <button id="restore-backup" class="secondary" type="button">Restore backup</button>
+      <button id="cancel-backup" class="cancel" type="button" hidden>Cancel backup</button>
+      <input id="backup-file" type="file" accept=".json,application/json" hidden>
+    </div>
+
+    <section class="backup-progress" aria-labelledby="progress-heading">
+      <h2 id="progress-heading">Progress</h2>
+      <div class="progress-summary" data-state="pending">
+        <label for="overall-progress">Overall progress</label>
+        <span id="overall-percent">0%</span>
+        <progress id="overall-progress" max="100" value="0">0%</progress>
+      </div>
+      <ol class="task-list" id="backup-tasks" aria-label="Backup progress">
+        <li data-stage="prepare" data-state="pending"><span class="task-label">Getting ready</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+        <li data-stage="gather" data-state="pending"><span class="task-label">Gathering data</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+        <li data-stage="create" data-state="pending"><span class="task-label">Creating backup</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+        <li data-stage="encrypt" data-state="pending" hidden><span class="task-label">Encrypting</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+        <li data-stage="download" data-state="pending"><span class="task-label">Downloading</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+        <li data-stage="cleanup" data-state="pending"><span class="task-label">Cleaning up</span><span class="task-status">Waiting</span><progress max="100" value="0">0%</progress><span class="task-percent">0%</span></li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
