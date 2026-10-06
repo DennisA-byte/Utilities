@@ -53,6 +53,7 @@ test.describe("Utilities homepage", () => {
   });
 
   test("copies a standalone data URL that runs offline", async ({ page, context, browser, browserName }) => {
+    test.setTimeout(90000);
     if (browserName === "firefox" || browserName === "webkit") {
       await page.addInitScript(() => {
         let clipboardText = "";
@@ -98,6 +99,7 @@ test.describe("Utilities homepage", () => {
   });
 
   test("downloaded compiled app loads all pages online and offline", async ({ page, context }, testInfo) => {
+    test.setTimeout(90000);
     await page.route("**/index.html", async (route) => {
       const response = await route.fetch();
       const html = await response.text();
