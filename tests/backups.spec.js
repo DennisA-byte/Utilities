@@ -388,7 +388,7 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   await popup.close();
 });
 
-test("shows saved games when an older storage script lacks the backup inventory API", async ({ page }) => {
+test("backs up saved games when older storage scripts lack newer APIs", async ({ page }, testInfo) => {
   await page.goto("/index.html");
   await page.evaluate(async () => {
     localStorage.setItem("utilities-recent-games", JSON.stringify(["upload-legacy"]));
@@ -396,7 +396,9 @@ test("shows saved games when an older storage script lacks the backup inventory 
   });
   await page.context().route("**/game-storage.js", async (route) => {
     const response = await route.fetch();
-    const script = (await response.text()).replace("download, getBackupGames, getGame,", "download, getGame,");
+    const script = (await response.text())
+      .replace("download, getBackupGames, getGame,", "download, getGame,")
+      .replace("getSavedGames, getSavedRecord, getStatus", "getSavedGames, getStatus");
     await route.fulfill({ response, body: script });
   });
   const backupsPage = await page.context().newPage();
@@ -405,7 +407,23 @@ test("shows saved games when an older storage script lacks the backup inventory 
   await expect(backupsPage.locator("#game-navigation button")).toHaveCount(1);
   await expect(backupsPage.locator("#game-list-status")).toBeEmpty();
   await expect(backupsPage.locator("#game-navigation button")).toHaveText("Legacy saved game");
-  await expect(backupsPage.locator("#backup-status")).not.toContainText("getBackupGames is not a function");
+  await backupsPage.getByRole("checkbox", { name: "Back up everything, including all app data, game code, game data, and source" }).check();
+  await backupsPage.locator("#games-navigation summary").click();
+  await backupsPage.getByRole("button", { name: "Legacy saved game", exact: true }).click();
+  const downloadPromise = backupsPage.waitForEvent("download");
+  await backupsPage.getByRole("button", { name: "Start backup" }).click();
+  await expect(backupsPage.locator("#backup-status")).toContainText("Backup downloaded");
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("legacy-storage-backup.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+  expect(backup.body.games).toEqual([{
+    file: "upload-legacy",
+    title: "Legacy saved game",
+    source: "upload",
+    code: "<title>Legacy saved game</title>",
+    data: {},
+  }]);
 });
 
 test("opens a dedicated backup settings page for each game in the Games dropdown", async ({ page }) => {

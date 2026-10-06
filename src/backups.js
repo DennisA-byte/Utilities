@@ -147,10 +147,16 @@ const UtilitiesBackups = (() => {
     return Object.fromEntries(Object.entries(appData).filter(([key]) => selectedGroups.has(appDataKeyGroups[key] || "other")));
   }
 
-  async function getGameCode(file, signal) {
+  async function getSavedGameRecord(file) {
+    if (typeof GameLibrary.getSavedRecord === "function") return GameLibrary.getSavedRecord(file);
+    if (typeof GameLibrary.getSavedGames !== "function") return null;
+    const records = await GameLibrary.getSavedGames();
+    return records.find((record) => record.file === file) || null;
+  }
+
+  async function getGameCode(file, signal, savedRecord) {
     abortIfNeeded(signal);
-    const record = await GameLibrary.getSavedRecord(file);
-    if (record) return record;
+    if (savedRecord) return savedRecord;
     const text = await GameLibrary.getLatestGame(file, { signal });
     return { file, text, title: file, source: "library", savedAt: Date.now() };
   }
@@ -206,11 +212,12 @@ const UtilitiesBackups = (() => {
         if (!game) return;
         const current = nextGame;
         nextGame += 1;
+        const savedRecord = game.includeCode ? await getSavedGameRecord(game.file) : null;
         let record = null;
-        if (game.includeCode && !await GameLibrary.getSavedRecord(game.file)) {
+        if (game.includeCode && !savedRecord) {
           options.onProgress?.({ stage: "gather", current: completedGames, total: gamesToInclude.length, message: `Getting data from ${game.title || game.file}`, state: "running" });
         }
-        if (game.includeCode) record = await getGameCode(game.file, signal);
+        if (game.includeCode) record = await getGameCode(game.file, signal, savedRecord);
         const result = {
           file: game.file,
           title: record?.title || game.title || game.file,
