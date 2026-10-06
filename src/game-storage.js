@@ -3,6 +3,8 @@ const GameLibrary = (() => {
   const storeName = "games";
   const pinnedKey = "utilities-pinned-games";
   const recentKey = "utilities-recent-games";
+  const playedKey = "utilities-played-games";
+  const gameDataPrefix = "utilities-game-data:";
   const gameUrl = (file) => `https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/${encodeURIComponent(normalizeFileName(file))}`;
 
   function normalizeFileName(file) {
@@ -56,6 +58,26 @@ const GameLibrary = (() => {
       });
       request.onsuccess = resolve;
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function restoreBackupGames(records) {
+    const preparedRecords = await Promise.all(records.map(async (record) => ({
+      file: record.file,
+      text: record.text,
+      title: record.title || record.file,
+      source: record.source || "upload",
+      savedAt: record.savedAt || Date.now(),
+      contentHash: record.contentHash || await hashText(record.text),
+    })));
+    const database = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+      preparedRecords.forEach((record) => store.put(record));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error("Could not restore saved games."));
     });
   }
 
@@ -118,9 +140,67 @@ const GameLibrary = (() => {
     }
   }
 
+  function getPlayedGames() {
+    try {
+      const played = JSON.parse(localStorage.getItem(playedKey) || "[]");
+      return Array.isArray(played) ? played : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function gameDataKey(file) {
+    return `${gameDataPrefix}${encodeURIComponent(file)}`;
+  }
+
+  function getGameData(file) {
+    try {
+      const data = JSON.parse(localStorage.getItem(gameDataKey(file)) || "{}");
+      return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveGameData(file, data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Game data must be a JSON object.");
+    }
+    const serialized = JSON.stringify(data);
+    localStorage.setItem(gameDataKey(file), serialized);
+    return JSON.parse(serialized);
+  }
+
+  async function getBackupGames() {
+    const records = await getSavedGames();
+    const byFile = new Map();
+    [...getPlayedGames(), ...getRecent()].forEach((file) => {
+      byFile.set(file, { file, title: file, source: "library", played: true, hasCode: false, hasData: false });
+    });
+    records.forEach((record) => {
+      const game = byFile.get(record.file) || { file: record.file, played: false };
+      Object.assign(game, {
+        title: record.title || game.title || record.file,
+        source: record.source || game.source || "library",
+        hasCode: typeof record.text === "string",
+      });
+      byFile.set(record.file, game);
+    });
+    byFile.forEach((game) => {
+      game.hasData = Object.keys(getGameData(game.file)).length > 0;
+    });
+    return [...byFile.values()];
+  }
+
   function recordRecent(file) {
     const recent = getRecent().filter((item) => item !== file);
     localStorage.setItem(recentKey, JSON.stringify([file, ...recent].slice(0, 20)));
+    try {
+      const played = getPlayedGames();
+      if (!played.includes(file)) localStorage.setItem(playedKey, JSON.stringify([...played, file]));
+    } catch (error) {
+      return;
+    }
   }
 
   function connectionLabel() {
@@ -411,7 +491,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, clearData, connectionLabel, download, getGame, getLatestGame, getPinned, getRecent, getSavedGames, getStatus, hashText, icon, importData, importGame, installToolbar, isPinned, moveOldCopyToMyGames, normalizeFileName, play, recordRecent, removeGame, renameGame, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
+  return { buildGameDocument, clearData, connectionLabel, download, getBackupGames, getGame, getGameData, getLatestGame, getPinned, getPlayedGames, getRecent, getSavedGames, getSavedRecord, getStatus, hashText, icon, importData, importGame, installToolbar, isPinned, moveOldCopyToMyGames, normalizeFileName, play, recordRecent, removeGame, renameGame, restoreBackupGames, saveGame, saveGameData, saveOffline, toggleOffline, togglePinned, toolbarAction };
 })();
 
 window.GameLibrary = GameLibrary;

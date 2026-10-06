@@ -17,3 +17,89 @@ test("opens the backup page from Settings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Backup settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Progress" })).toBeVisible();
 });
+
+test("creates a versioned backup from selected app and game data", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const backup = await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["upload-fixture"]));
+    localStorage.setItem("utilities-cached-version", "cached-source-must-not-be-backed-up");
+    await GameLibrary.saveGame("upload-fixture", "<!doctype html><title>Fixture</title>", { title: "Fixture", source: "upload" });
+    await GameLibrary.saveGameData("upload-fixture", { score: 42 });
+    const text = await UtilitiesBackups.createBackup({
+      note: "before update",
+      includeAppData: true,
+      games: [{ file: "upload-fixture", includeCode: true, includeData: true }],
+    });
+    return JSON.parse(text);
+  });
+
+  expect(backup.format).toBe("utilities-backup");
+  expect(backup.version).toBe(1);
+  expect(backup.header.note).toBe("before update");
+  expect(backup.body.appData["utilities-pinned-games"]).toBe(JSON.stringify(["upload-fixture"]));
+  expect(backup.body.appData["utilities-cached-version"]).toBeUndefined();
+  expect(backup.body.games).toEqual([{
+    file: "upload-fixture",
+    title: "Fixture",
+    source: "upload",
+    code: "<!doctype html><title>Fixture</title>",
+    data: { score: 42 },
+  }]);
+  expect(backup.header.checksum).toMatch(/^[a-f0-9]{64}$/);
+  expect(backup.recoveryHtml).toContain("<!doctype html>");
+});
+
+test("restores selected backup data without clearing unrelated storage", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["upload-fixture"]));
+    await GameLibrary.saveGame("upload-fixture", "<title>Fixture</title>", { title: "Fixture", source: "upload" });
+    await GameLibrary.saveGameData("upload-fixture", { score: 42 });
+    const backup = await UtilitiesBackups.createBackup({
+      note: "restore me",
+      includeAppData: true,
+      games: [{ file: "upload-fixture", includeCode: true, includeData: true }],
+    });
+
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["different-game"]));
+    localStorage.setItem("unrelated-user-data", "preserve me");
+    await GameLibrary.saveGameData("upload-fixture", { score: 9 });
+    await UtilitiesBackups.restoreBackup(backup);
+
+    return {
+      pinned: localStorage.getItem("utilities-pinned-games"),
+      unrelated: localStorage.getItem("unrelated-user-data"),
+      gameData: await GameLibrary.getGameData("upload-fixture"),
+      game: await GameLibrary.getSavedRecord("upload-fixture"),
+    };
+  });
+
+  expect(result.pinned).toBe(JSON.stringify(["upload-fixture"]));
+  expect(result.unrelated).toBe("preserve me");
+  expect(result.gameData).toEqual({ score: 42 });
+  expect(result.game.text).toBe("<title>Fixture</title>");
+});
+
+test("rejects a damaged backup before changing stored data", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["before"]));
+    const text = await UtilitiesBackups.createBackup({ includeAppData: true, games: [] });
+    const damaged = JSON.parse(text);
+    damaged.header.checksum = "0".repeat(64);
+    localStorage.setItem("utilities-pinned-games", JSON.stringify(["current"]));
+    let errorMessage = "";
+    try {
+      await UtilitiesBackups.restoreBackup(JSON.stringify(damaged));
+    } catch (error) {
+      errorMessage = error.message;
+    }
+    return { errorMessage, pinned: localStorage.getItem("utilities-pinned-games") };
+  });
+
+  expect(result.errorMessage).toContain("verification failed");
+  expect(result.pinned).toBe(JSON.stringify(["current"]));
+});
