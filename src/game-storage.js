@@ -3,6 +3,8 @@ const GameLibrary = (() => {
   const storeName = "games";
   const pinnedKey = "utilities-pinned-games";
   const recentKey = "utilities-recent-games";
+  const playedKey = "utilities-played-games";
+  const gameDataPrefix = "utilities-game-data:";
   const gameUrl = (file) => `https://cdn.jsdelivr.net/gh/bubbls/ugs-singlefile/UGS-Files/${encodeURIComponent(normalizeFileName(file))}`;
 
   function normalizeFileName(file) {
@@ -56,6 +58,26 @@ const GameLibrary = (() => {
       });
       request.onsuccess = resolve;
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function restoreBackupGames(records) {
+    const preparedRecords = await Promise.all(records.map(async (record) => ({
+      file: record.file,
+      text: record.text,
+      title: record.title || record.file,
+      source: record.source || "upload",
+      savedAt: record.savedAt || Date.now(),
+      contentHash: record.contentHash || await hashText(record.text),
+    })));
+    const database = await openDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+      preparedRecords.forEach((record) => store.put(record));
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error("Could not restore saved games."));
     });
   }
 
@@ -118,9 +140,68 @@ const GameLibrary = (() => {
     }
   }
 
+  function getPlayedGames() {
+    try {
+      const played = JSON.parse(localStorage.getItem(playedKey) || "[]");
+      return Array.isArray(played) ? played : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function gameDataKey(file) {
+    return `${gameDataPrefix}${encodeURIComponent(file)}`;
+  }
+
+  function getGameData(file) {
+    try {
+      const data = JSON.parse(localStorage.getItem(gameDataKey(file)) || "{}");
+      return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveGameData(file, data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Game data must be a JSON object.");
+    }
+    const webStorageData = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)]));
+    const serialized = JSON.stringify(webStorageData);
+    localStorage.setItem(gameDataKey(file), serialized);
+    return JSON.parse(serialized);
+  }
+
+  async function getBackupGames() {
+    const records = await getSavedGames();
+    const byFile = new Map();
+    [...getPlayedGames(), ...getRecent()].forEach((file) => {
+      byFile.set(file, { file, title: file, source: "library", played: true, hasCode: false, hasData: false });
+    });
+    records.forEach((record) => {
+      const game = byFile.get(record.file) || { file: record.file, played: false };
+      Object.assign(game, {
+        title: record.title || game.title || record.file,
+        source: record.source || game.source || "library",
+        hasCode: typeof record.text === "string",
+      });
+      byFile.set(record.file, game);
+    });
+    byFile.forEach((game) => {
+      game.hasData = Object.keys(getGameData(game.file)).length > 0;
+    });
+    return [...byFile.values()];
+  }
+
   function recordRecent(file) {
     const recent = getRecent().filter((item) => item !== file);
     localStorage.setItem(recentKey, JSON.stringify([file, ...recent].slice(0, 20)));
+    try {
+      const played = getPlayedGames();
+      if (!played.includes(file)) localStorage.setItem(playedKey, JSON.stringify([...played, file]));
+    } catch (error) {
+      return;
+    }
   }
 
   function connectionLabel() {
@@ -144,8 +225,8 @@ const GameLibrary = (() => {
     return response.text();
   }
 
-  async function getLatestGame(file) {
-    const response = await fetch(`${gameUrl(file)}?t=${Date.now()}`, { cache: "no-store" });
+  async function getLatestGame(file, options = {}) {
+    const response = await fetch(`${gameUrl(file)}?t=${Date.now()}`, { ...options, cache: "no-store" });
     if (!response.ok) throw new Error(`Could not load ${file}`);
     return response.text();
   }
@@ -188,9 +269,20 @@ const GameLibrary = (() => {
     return parsed.documentElement.outerHTML;
   }
 
+  function installGameStorage(text, file) {
+    const storageKey = JSON.stringify(gameDataKey(file)).replace(/</g, "\\u003c");
+    const script = `<script>(function(){try{var backingStorage=window.localStorage,storageKey=${storageKey},values=Object.create(null),stored=backingStorage.getItem(storageKey);if(stored){var parsed=JSON.parse(stored);if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))values=Object.assign(Object.create(null),parsed);}function persist(){backingStorage.setItem(storageKey,JSON.stringify(values));}var facade=Object.create(Storage.prototype);Object.defineProperties(facade,{length:{configurable:true,get:function(){return Object.keys(values).length;}},key:{configurable:true,value:function(index){return Object.keys(values)[Number(index)]||null;}},getItem:{configurable:true,value:function(key){key=String(key);return Object.prototype.hasOwnProperty.call(values,key)?values[key]:null;}},setItem:{configurable:true,value:function(key,value){values[String(key)]=String(value);persist();}},removeItem:{configurable:true,value:function(key){delete values[String(key)];persist();}},clear:{configurable:true,value:function(){values=Object.create(null);persist();}}});var gameStorage=new Proxy(facade,{get:function(target,property,receiver){if(Reflect.has(target,property))return Reflect.get(target,property,receiver);if(typeof property==="string"&&Object.prototype.hasOwnProperty.call(values,property))return values[property];},set:function(target,property,value){if(typeof property!=="string"||Reflect.has(target,property))return Reflect.set(target,property,value);values[property]=String(value);persist();return true;},deleteProperty:function(target,property){if(typeof property!=="string"||Reflect.has(target,property))return Reflect.deleteProperty(target,property);delete values[property];persist();return true;},ownKeys:function(target){return Array.from(new Set(Reflect.ownKeys(target).concat(Object.keys(values))));},getOwnPropertyDescriptor:function(target,property){return Reflect.getOwnPropertyDescriptor(target,property)||(typeof property==="string"&&Object.prototype.hasOwnProperty.call(values,property)?{configurable:true,enumerable:true,writable:true,value:values[property]}:undefined);}});Object.defineProperty(window,"localStorage",{configurable:true,value:gameStorage});}catch(error){}})();</script>`;
+    const head = text.match(/<head\b[^>]*>/i);
+    if (head) return text.replace(head[0], `${head[0]}${script}`);
+    const html = text.match(/<html\b[^>]*>/i);
+    if (html) return text.replace(html[0], `${html[0]}<head>${script}</head>`);
+    return `<head>${script}</head>${text}`;
+  }
+
   function buildGameDocument(text, file, title) {
     const safeTitle = escapeHtml(title);
     text = removeLegacyToolbar(text);
+    text = installGameStorage(text, file);
     const actionScript = `<script>(function(){var toolbar=document.getElementById("utilities-toolbar"),move=toolbar.querySelector('[data-action="move"]');function send(name){if(window.opener)window.opener.postMessage({type:"utilities-toolbar-action",action:name},"*");}function cursorIsHidden(target){while(target&&target.nodeType===1){if(getComputedStyle(target).cursor==="none")return true;target=target.parentElement;}return getComputedStyle(document.documentElement).cursor==="none"||getComputedStyle(document.body).cursor==="none";}function updateToolbarVisibility(event){var hidden=!!document.pointerLockElement||cursorIsHidden(event&&event.target);toolbar.classList.toggle("pointer-hidden",hidden);}toolbar.addEventListener("click",function(event){var button=event.target.closest("button[data-action]");if(!button)return;event.preventDefault();var name=button.dataset.action;if(name==="dock")toolbar.classList.toggle("docked");else if(name==="minimize")toolbar.classList.toggle("minimized");else if(name==="close")window.close();else send(name);});var moving=false,x=0,y=0;function stopMoving(){moving=false;}move.addEventListener("pointerdown",function(event){moving=true;move.setPointerCapture(event.pointerId);var box=toolbar.getBoundingClientRect();x=event.clientX-box.left;y=event.clientY-box.top;toolbar.style.left=box.left+"px";toolbar.style.top=box.top+"px";toolbar.style.transform="none";event.preventDefault();});move.addEventListener("pointermove",function(event){if(moving){toolbar.style.left=event.clientX-x+"px";toolbar.style.top=event.clientY-y+"px";}updateToolbarVisibility(event);});move.addEventListener("pointerup",stopMoving);move.addEventListener("pointercancel",stopMoving);move.addEventListener("lostpointercapture",stopMoving);window.addEventListener("pointerup",stopMoving);window.addEventListener("blur",stopMoving);document.addEventListener("pointermove",updateToolbarVisibility,true);document.addEventListener("mousemove",updateToolbarVisibility,true);document.addEventListener("pointerlockchange",function(){updateToolbarVisibility(null);});})();<\/script>`;
     const toolbar = `<style>
       #utilities-toolbar{align-items:center!important;background:#252b35!important;border:1px solid #424b58!important;border-radius:6px!important;box-shadow:0 8px 24px #0008!important;color:#f6f2e8!important;display:flex!important;gap:4px!important;left:12px!important;padding:6px!important;position:fixed!important;top:12px!important;z-index:2147483647!important;font:14px Arial,sans-serif!important}
@@ -411,7 +503,7 @@ const GameLibrary = (() => {
     return id;
   }
 
-  return { buildGameDocument, clearData, connectionLabel, download, getGame, getLatestGame, getPinned, getRecent, getSavedGames, getStatus, hashText, icon, importData, importGame, installToolbar, isPinned, moveOldCopyToMyGames, normalizeFileName, play, recordRecent, removeGame, renameGame, saveGame, saveOffline, toggleOffline, togglePinned, toolbarAction };
+  return { buildGameDocument, clearData, connectionLabel, download, getBackupGames, getGame, getGameData, getLatestGame, getPinned, getPlayedGames, getRecent, getSavedGames, getSavedRecord, getStatus, hashText, icon, importData, importGame, installToolbar, isPinned, moveOldCopyToMyGames, normalizeFileName, play, recordRecent, removeGame, renameGame, restoreBackupGames, saveGame, saveGameData, saveOffline, toggleOffline, togglePinned, toolbarAction };
 })();
 
 window.GameLibrary = GameLibrary;
