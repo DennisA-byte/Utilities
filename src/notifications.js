@@ -281,6 +281,10 @@
   }
 
   async function checkForUpdates() {
+    if (!navigator.onLine) {
+      bodyNotification("warning", "Update check unavailable", { message: "Utilities could not check GitHub for a newer version." });
+      return;
+    }
     try {
       const [latest, runningCommit] = await Promise.all([fetchLatestCommit(), findRunningCommit()]);
       if (latest.sha && runningCommit && latest.sha !== runningCommit) showUpdate(latest);

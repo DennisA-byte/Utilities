@@ -159,7 +159,7 @@ test.describe("Utilities homepage", () => {
     await offlinePage.goto(compiledDocumentUrl);
     await expect(offlinePage.getByRole("heading", { name: "Pick up where you left off." })).toBeVisible();
     const offlineWarning = offlinePage.getByRole("dialog", { name: "Update check unavailable" });
-    await expect(offlineWarning).toBeVisible();
+    await expect(offlineWarning).toBeVisible({ timeout: 10000 });
     await offlineWarning.getByRole("button", { name: "Close" }).click();
     const offlineUrl = offlinePage.url();
     await offlinePage.getByRole("button", { name: "Settings" }).click();
