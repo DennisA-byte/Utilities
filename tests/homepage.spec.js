@@ -161,6 +161,8 @@ test.describe("Utilities homepage", () => {
     const offlineWarning = offlinePage.getByRole("dialog", { name: "Update check unavailable" });
     await expect(offlineWarning).toBeVisible({ timeout: 10000 });
     await offlineWarning.getByRole("button", { name: "Close" }).click();
+    await offlinePage.waitForTimeout(1200);
+    await expect(offlineWarning).toHaveCount(0);
     const offlineUrl = offlinePage.url();
     await offlinePage.getByRole("button", { name: "Settings" }).click();
     const offlineSettings = offlinePage.frameLocator('iframe[title="Settings"]');

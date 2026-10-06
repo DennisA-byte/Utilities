@@ -7,6 +7,7 @@
   const updateCheckKey = "utilities-last-update-check";
   const offlinePreferenceKey = "utilities-offline-update-preferences";
   let updateDialogOpen = false;
+  let lastUpdateCheckTime = 0;
   const loadedScript = document.currentScript;
   const loadedScriptUrl = loadedScript?.src || "";
 
@@ -297,11 +298,15 @@
   }
 
   function scheduleUpdateCheck() {
-    let checkedAt = 0;
-    try { checkedAt = Number(sessionStorage.getItem(updateCheckKey) || 0); } catch (error) {}
+    let checkedAt = lastUpdateCheckTime;
+    try {
+      const storedAt = Number(sessionStorage.getItem(updateCheckKey) || 0);
+      if (Number.isFinite(storedAt)) checkedAt = storedAt;
+    } catch (error) {}
     const elapsed = Date.now() - checkedAt;
     if (elapsed >= updateInterval) {
-      try { sessionStorage.setItem(updateCheckKey, String(Date.now())); } catch (error) {}
+      lastUpdateCheckTime = Date.now();
+      try { sessionStorage.setItem(updateCheckKey, String(lastUpdateCheckTime)); } catch (error) {}
       checkForUpdates();
     }
     window.setTimeout(scheduleUpdateCheck, Math.max(updateInterval - Math.max(elapsed, 0), 1000));
