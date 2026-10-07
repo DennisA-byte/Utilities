@@ -2,7 +2,10 @@ const { test, expect } = require("@playwright/test");
 const { readFile } = require("node:fs/promises");
 
 test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => { window.__utilitiesRunningCommit = "test-running"; });
+  await context.addInitScript(() => {
+    window.__utilitiesRunningCommit = "test-running";
+    localStorage.setItem("utilities-first-launch-restore-asked", "true");
+  });
   await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
     await route.fulfill({ json: { sha: "test-running" } });
   });
@@ -16,7 +19,48 @@ test("opens the backup page from Settings", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Start backup" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Restore backup" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Backup settings" })).toBeVisible();
+  await expect(page.getByLabel(/Confirm password/)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Progress" })).toBeVisible();
+});
+
+test("includes backup settings when the opt-in is enabled on the backup page", async ({ page }, testInfo) => {
+  await page.goto("/backups.html");
+  await page.getByLabel("Save these settings in the backup and enable Quick backup on the homepage").check();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Start backup" }).click();
+  await expect(page.getByRole("status")).toContainText("Backup downloaded.");
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("settings-backup.json");
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, "utf8"));
+
+  expect(backup.body.backupSettings).toMatchObject({
+    note: "",
+    includeSource: false,
+    encrypt: false,
+    games: [],
+  });
+});
+
+test("loads saved backup settings into the backup page controls", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.evaluate(() => localStorage.setItem("utilities-backup-settings", JSON.stringify({
+    note: "restore this profile",
+    appDataGroups: ["other"],
+    includeSource: true,
+    encrypt: true,
+    games: [],
+  })));
+  await page.goto("/backups.html");
+
+  await expect(page.getByLabel("Save these settings in the backup and enable Quick backup on the homepage")).toBeChecked();
+  await expect(page.locator("#backup-note")).toHaveValue("restore this profile");
+  await expect(page.getByLabel("Include source code in a single file")).toBeChecked();
+  await expect(page.getByLabel("Library organization")).not.toBeChecked();
+  await expect(page.getByLabel("Other app settings")).toBeChecked();
+  await page.getByRole("button", { name: "Encryption" }).click();
+  await expect(page.getByLabel("Encrypt this backup")).toBeChecked();
+  await expect(page.getByLabel("Password", { exact: true })).toBeEnabled();
 });
 
 test("creates a versioned backup from selected app and game data", async ({ page }) => {
@@ -49,6 +93,81 @@ test("creates a versioned backup from selected app and game data", async ({ page
   }]);
   expect(backup.header.checksum).toMatch(/^[a-f0-9]{64}$/);
   expect(backup.recoveryHtml).toContain("<!doctype html>");
+});
+
+test("saves selected backup settings in the backup and restores them for quick backup", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    await GameLibrary.saveGame("fixture", "<title>Fixture</title>", { title: "Fixture", source: "upload" });
+    const selection = {
+      note: "weekly",
+      appDataGroups: ["library"],
+      includeSource: true,
+      saveSettings: true,
+      games: [{ file: "fixture", includeCode: true, includeData: false }],
+    };
+    const backup = await UtilitiesBackups.createBackup(selection);
+    const storedAfterCreate = UtilitiesBackups.getSavedSettings();
+    localStorage.removeItem("utilities-backup-settings");
+    await UtilitiesBackups.restoreBackup(backup);
+    return { payload: JSON.parse(backup), storedAfterCreate, storedAfterRestore: UtilitiesBackups.getSavedSettings() };
+  });
+
+  expect(result.payload.body.backupSettings).toEqual({
+    note: "weekly",
+    appDataGroups: ["library"],
+    includeSource: true,
+    encrypt: false,
+    games: [{ file: "fixture", includeCode: true, includeData: false }],
+  });
+  expect(result.storedAfterCreate).toEqual(result.payload.body.backupSettings);
+  expect(result.storedAfterRestore).toEqual(result.payload.body.backupSettings);
+});
+
+test("preserves quick-backup settings unless the settings opt-in is explicitly disabled", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    const settings = {
+      note: "keep profile",
+      appDataGroups: ["library"],
+      includeSource: false,
+      encrypt: false,
+      games: [],
+    };
+    UtilitiesBackups.saveSettings(settings);
+    await UtilitiesBackups.createBackup({ appDataGroups: [], games: [] });
+    const afterOrdinaryBackup = UtilitiesBackups.getSavedSettings();
+    await UtilitiesBackups.createBackup({ appDataGroups: [], saveSettings: false, games: [] });
+    return { afterOrdinaryBackup, afterOptOut: UtilitiesBackups.getSavedSettings() };
+  });
+
+  expect(result.afterOrdinaryBackup.note).toBe("keep profile");
+  expect(result.afterOptOut).toBeNull();
+});
+
+test("remembers an encrypted backup password verifier without storing the password", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.addScriptTag({ url: "/backups.js" });
+  const result = await page.evaluate(async () => {
+    const backup = await UtilitiesBackups.createBackup(
+      { includeAppData: false, saveSettings: true, games: [] },
+      { password: "remembered password" },
+    );
+    return {
+      payload: JSON.parse(backup),
+      storedVerifier: localStorage.getItem("utilities-backup-password-verifier"),
+      matchingPassword: await UtilitiesBackups.matchesRememberedPassword("remembered password"),
+      changedPassword: await UtilitiesBackups.matchesRememberedPassword("changed password"),
+    };
+  });
+
+  expect(result.payload.encrypted).toBe(true);
+  expect(result.storedVerifier).not.toContain("remembered password");
+  expect(JSON.parse(result.storedVerifier)).toMatchObject({ version: 1, kdf: "PBKDF2-SHA-256" });
+  expect(result.matchingPassword).toBe(true);
+  expect(result.changedPassword).toBe(false);
 });
 
 test("restores selected backup data without clearing unrelated storage", async ({ page }) => {
@@ -317,16 +436,11 @@ test("includes an offline single-file source bundle when selected", async ({ pag
   expect(backup.body.sourceCode).not.toContain("<script src=\"game-storage.js\">");
 });
 
-test("requires matching passwords and downloads an encrypted backup", async ({ page }, testInfo) => {
+test("encrypts a backup without requiring a duplicate password field", async ({ page }, testInfo) => {
   await page.goto("/backups.html");
   await page.getByRole("button", { name: "Encryption" }).click();
   await page.getByRole("checkbox", { name: "Encrypt this backup" }).check();
   await page.getByLabel("Password", { exact: true }).fill("secure password");
-  await page.getByLabel("Confirm password", { exact: true }).fill("different password");
-  await page.getByRole("button", { name: "Start backup" }).click();
-  await expect(page.locator("#backup-status")).toContainText("passwords do not match");
-
-  await page.getByLabel("Confirm password", { exact: true }).fill("secure password");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Start backup" }).click();
   const download = await downloadPromise;
@@ -374,6 +488,7 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   await expect(backupsFrame.getByRole("checkbox", { name: "Include Compiled game fixture data" })).toBeVisible();
   await backupsFrame.getByRole("button", { name: "General" }).click();
   await backupsFrame.getByRole("checkbox", { name: "Include source code in a single file" }).check();
+  await backupsFrame.getByLabel("Save these settings in the backup and enable Quick backup on the homepage").check();
   const downloadPromise = popup.waitForEvent("download");
   await backupsFrame.getByRole("button", { name: "Start backup" }).click();
   await expect(backupsFrame.locator("#backup-status")).toContainText("Backup downloaded");
@@ -383,6 +498,7 @@ test("opens Backups and creates a source backup in the compiled app", async ({ p
   const backup = JSON.parse(await readFile(backupPath, "utf8"));
   expect(backup.body.sourceCode).toContain("Utilities Source Bundle");
   expect(backup.body.sourceCode).toContain("backups.html");
+  await expect(popup.getByRole("button", { name: "Quick backup" })).toBeVisible();
   await backupsFrame.getByRole("link", { name: "Back to Settings" }).click();
   await expect(settingsFrame.getByRole("link", { name: "Backups" })).toBeVisible();
   await popup.close();
@@ -591,7 +707,7 @@ test("places the everything option above tabs and locks individual selections", 
   await expect(page.getByRole("checkbox", { name: "Encrypt this backup" })).toBeEnabled();
   await page.getByRole("checkbox", { name: "Encrypt this backup" }).check();
   await expect(page.getByLabel("Password", { exact: true })).toBeEnabled();
-  await expect(page.getByLabel("Confirm password", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Confirm password", { exact: true })).toHaveCount(0);
 
   await backupEverything.uncheck();
   await page.getByRole("button", { name: "App data" }).click();

@@ -3,6 +3,13 @@ const UtilitiesBackups = (() => {
   const version = 1;
   const cachedSourceKey = "utilities-cached-version";
   const gameDataPrefix = "utilities-game-data:";
+  const backupSettingsKey = "utilities-backup-settings";
+  const passwordVerifierKey = "utilities-backup-password-verifier";
+  const internalAppDataKeys = new Set([
+    backupSettingsKey,
+    passwordVerifierKey,
+    "utilities-first-launch-restore-asked",
+  ]);
   const appDataGroups = [
     { id: "library", label: "Library organization", description: "Pinned games, recently played games, and play history." },
     { id: "offline-updates", label: "Offline update preferences", description: "Saved decisions for offline game updates." },
@@ -134,7 +141,7 @@ const UtilitiesBackups = (() => {
     const appData = {};
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
-      if (!key.startsWith("utilities-") || key === cachedSourceKey || key.startsWith(gameDataPrefix)) continue;
+      if (!key.startsWith("utilities-") || key === cachedSourceKey || key.startsWith(gameDataPrefix) || internalAppDataKeys.has(key)) continue;
       appData[key] = localStorage.getItem(key);
     }
     return appData;
@@ -193,8 +200,125 @@ const UtilitiesBackups = (() => {
     });
   }
 
+  function validateBackupSettings(settings) {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+      throw new Error("The saved backup settings are invalid.");
+    }
+    const validGroups = new Set(appDataGroups.map((group) => group.id));
+    if (!Array.isArray(settings.appDataGroups) || settings.appDataGroups.some((group) => !validGroups.has(group))) {
+      throw new Error("The saved backup app data settings are invalid.");
+    }
+    if (!Array.isArray(settings.games)) throw new Error("The saved backup game settings are invalid.");
+    const seen = new Set();
+    const games = settings.games.map((game) => {
+      if (!game || typeof game.file !== "string" || !game.file || seen.has(game.file)
+        || typeof game.includeCode !== "boolean" || typeof game.includeData !== "boolean") {
+        throw new Error("The saved backup game settings are invalid.");
+      }
+      seen.add(game.file);
+      return { file: game.file, includeCode: game.includeCode, includeData: game.includeData };
+    });
+    return {
+      note: String(settings.note || "").slice(0, 500),
+      appDataGroups: [...new Set(settings.appDataGroups)],
+      includeSource: settings.includeSource === true,
+      encrypt: settings.encrypt === true,
+      games,
+    };
+  }
+
+  function getSavedSettings() {
+    const text = localStorage.getItem(backupSettingsKey);
+    if (!text) return null;
+    let settings;
+    try {
+      settings = JSON.parse(text);
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error("Saved backup settings are damaged.");
+      throw error;
+    }
+    return validateBackupSettings(settings);
+  }
+
+  function saveSettings(settings) {
+    const validSettings = validateBackupSettings(settings);
+    localStorage.setItem(backupSettingsKey, JSON.stringify(validSettings));
+    return validSettings;
+  }
+
+  function clearSettings() {
+    localStorage.removeItem(backupSettingsKey);
+  }
+
+  function getSettingsFromSelection(selection, encrypted) {
+    return validateBackupSettings({
+      note: selection.note,
+      appDataGroups: Array.isArray(selection.appDataGroups)
+        ? selection.appDataGroups
+        : selection.includeAppData ? appDataGroups.map((group) => group.id) : [],
+      includeSource: selection.includeSource,
+      encrypt: encrypted,
+      games: selection.games,
+    });
+  }
+
+  function getEncryptionVerifier(encryption) {
+    if (!encryption || encryption.algorithm !== "AES-GCM" || encryption.kdf !== "PBKDF2-SHA-256"
+      || !Number.isInteger(encryption.iterations) || encryption.iterations < 100000
+      || typeof encryption.salt !== "string" || typeof encryption.passwordVerifier !== "string") {
+      throw new Error("The backup password verifier is invalid.");
+    }
+    return {
+      version: 1,
+      kdf: encryption.kdf,
+      iterations: encryption.iterations,
+      salt: encryption.salt,
+      verifier: encryption.passwordVerifier,
+    };
+  }
+
+  function rememberPassword(password, encryption) {
+    const verifier = encryption
+      ? getEncryptionVerifier(encryption)
+      : null;
+    if (!verifier) throw new Error("Cannot remember a password without its encryption verifier.");
+    if (typeof password !== "string" || !password) throw new Error("Enter the backup password.");
+    localStorage.setItem(passwordVerifierKey, JSON.stringify(verifier));
+  }
+
+  async function matchesRememberedPassword(password) {
+    const stored = localStorage.getItem(passwordVerifierKey);
+    if (!stored) return null;
+    let verifier;
+    try {
+      verifier = JSON.parse(stored);
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error("The remembered backup password check is damaged.");
+      throw error;
+    }
+    if (verifier.version !== 1 || verifier.kdf !== "PBKDF2-SHA-256"
+      || !Number.isInteger(verifier.iterations) || verifier.iterations < 100000
+      || typeof verifier.salt !== "string" || typeof verifier.verifier !== "string") {
+      throw new Error("The remembered backup password check is invalid.");
+    }
+    try {
+      const { verifierKey } = await deriveEncryptionKeys(password, decodeBase64(verifier.salt), verifier.iterations);
+      return await crypto.subtle.verify(
+        "HMAC",
+        verifierKey,
+        decodeBase64(verifier.verifier),
+        new TextEncoder().encode(passwordVerifierText),
+      );
+    } catch (error) {
+      if (error.message?.includes("password")) throw error;
+      throw new Error("Could not verify the remembered backup password.");
+    }
+  }
+
   async function createBackup(selection, options = {}) {
     const gamesToInclude = validateSelection(selection);
+    const backupSettings = selection.saveSettings === true ? getSettingsFromSelection(selection, Boolean(options.password)) : null;
+    const updateSavedSettings = typeof selection.saveSettings === "boolean";
     const signal = options.signal;
     const localTimestamp = new Date().toISOString();
     const serverTimestamp = getServerTimestamp(signal);
@@ -237,6 +361,7 @@ const UtilitiesBackups = (() => {
     options.onStage?.({ stage: "create", percent: 15, message: "Preparing backup manifest", state: "running" });
     const sourceCode = selection.includeSource ? await createSourceBundle(signal) : null;
     const body = { appData, games, sourceCode };
+    if (backupSettings) body.backupSettings = backupSettings;
     const sourceCommit = await getSourceCommit(signal);
     options.onStage?.({ stage: "create", percent: 70, message: "Calculating backup checksum", state: "running" });
     const header = {
@@ -260,9 +385,14 @@ const UtilitiesBackups = (() => {
       options.onStage?.({ stage: "encrypt", percent: 0, message: "Encrypting backup", state: "running" });
       const encrypted = await encryptBackup(plaintext, options.password);
       abortIfNeeded(signal);
+      if (backupSettings) saveSettings(backupSettings);
+      else if (updateSavedSettings) clearSettings();
+      rememberPassword(options.password, JSON.parse(encrypted).encryption);
       options.onStage?.({ stage: "encrypt", percent: 100, message: "Encrypted with AES-GCM", state: "complete" });
       return encrypted;
     }
+    if (backupSettings) saveSettings(backupSettings);
+    else if (updateSavedSettings) clearSettings();
     return plaintext;
   }
 
@@ -301,7 +431,8 @@ const UtilitiesBackups = (() => {
 
   function validateAppData(appData) {
     return Object.entries(appData).map(([key, value]) => {
-      if (!key.startsWith("utilities-") || key === cachedSourceKey || key.startsWith(gameDataPrefix) || typeof value !== "string") {
+      if (!key.startsWith("utilities-") || key === cachedSourceKey || key.startsWith(gameDataPrefix)
+        || internalAppDataKeys.has(key) || typeof value !== "string") {
         throw new Error("The backup contains invalid application data.");
       }
       return [key, value];
@@ -310,6 +441,7 @@ const UtilitiesBackups = (() => {
 
   async function restoreBackup(text, password) {
     const payload = await parseBackup(text, password);
+    const backupSettings = payload.body.backupSettings === undefined ? null : validateBackupSettings(payload.body.backupSettings);
     const appData = validateAppData(payload.body.appData);
     const restoredGames = [];
     const gameData = [];
@@ -329,6 +461,8 @@ const UtilitiesBackups = (() => {
     await GameLibrary.restoreBackupGames(restoredGames);
     appData.forEach(([key, value]) => localStorage.setItem(key, value));
     gameData.forEach(([file, data]) => GameLibrary.saveGameData(file, data));
+    if (backupSettings) saveSettings(backupSettings);
+    if (password && JSON.parse(text).encrypted === true) rememberPassword(password, JSON.parse(text).encryption);
     return { restoredAppKeys: appData.length, restoredGames: restoredGames.length, restoredGameData: gameData.length };
   }
 
@@ -359,6 +493,18 @@ const UtilitiesBackups = (() => {
     return appDataGroups.map((group) => ({ ...group }));
   }
 
-  return { createBackup, listAppDataGroups, listGames, parseBackup, recoveryHtml, restoreBackup };
+  return {
+    createBackup,
+    clearSettings,
+    getSavedSettings,
+    listAppDataGroups,
+    listGames,
+    matchesRememberedPassword,
+    parseBackup,
+    recoveryHtml,
+    rememberPassword,
+    restoreBackup,
+    saveSettings,
+  };
 })();
 window.UtilitiesBackups = UtilitiesBackups;
