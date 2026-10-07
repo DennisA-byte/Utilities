@@ -38,7 +38,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  administration: read
 
 jobs:
   select-tests:
@@ -103,17 +102,10 @@ jobs:
               }
             }
 
-            if (eventName === "pull_request" && context.payload.pull_request?.user?.login) {
-              try {
-                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  username: context.payload.pull_request.user.login,
-                });
-                collaboratorPermission = data.permission;
-              } catch (error) {
-                core.warning(`Could not confirm pull request author permission; running all browsers. ${error.message}`);
-              }
+            if (eventName === "pull_request") {
+              const association = context.payload.pull_request?.author_association;
+              if (association === "OWNER") collaboratorPermission = "admin";
+              if (association === "COLLABORATOR") collaboratorPermission = "write";
             }
 
             const selection = selectProjects({

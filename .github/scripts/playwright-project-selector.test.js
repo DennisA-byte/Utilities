@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { projects, selectProjects } = require("./playwright-project-selector");
+const { permissionFromAssociation, projects, selectProjects } = require("./playwright-project-selector");
 
 const allProjectNames = projects.map(({ project }) => project);
 const names = (result) => result.projects.map(({ project }) => project);
@@ -50,7 +50,7 @@ test("new files, source changes, and test changes on push use every browser", ()
 });
 
 test("minor pull requests use Chromium only for confirmed edit-level collaborators", () => {
-  for (const permission of ["write", "maintain", "admin"]) {
+  for (const permission of ["write", "admin"]) {
     assert.deepEqual(names(selectProjects({
       eventName: "pull_request",
       files: [{ path: "README.md", status: "modified" }],
@@ -58,6 +58,13 @@ test("minor pull requests use Chromium only for confirmed edit-level collaborato
       collaboratorPermission: permission,
     })), ["chromium"]);
   }
+});
+
+test("only owner and collaborator associations qualify for the minor PR path", () => {
+  assert.equal(permissionFromAssociation("OWNER"), "admin");
+  assert.equal(permissionFromAssociation("COLLABORATOR"), "write");
+  assert.equal(permissionFromAssociation("MEMBER"), "unknown");
+  assert.equal(permissionFromAssociation("CONTRIBUTOR"), "unknown");
 });
 
 test("pull requests from unconfirmed or lower-permission authors use every browser", () => {

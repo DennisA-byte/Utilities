@@ -6,7 +6,7 @@ const projects = [
   { project: "webkit", browser: "webkit" },
 ];
 
-const editPermissions = new Set(["admin", "maintain", "write"]);
+const editPermissions = new Set(["admin", "write"]);
 const protectedPaths = [
   /^\.github\/workflows\//,
   /^\.github\/scripts\//,
@@ -19,6 +19,12 @@ const protectedPaths = [
 
 function isDocumentationPath(path) {
   return path === "README.md" || /^docs\/.+\.mdx?$/.test(path);
+}
+
+function permissionFromAssociation(association) {
+  if (association === "OWNER") return "admin";
+  if (association === "COLLABORATOR") return "write";
+  return "unknown";
 }
 
 function isMajorDiff(files, changedLines) {
@@ -44,7 +50,7 @@ function selectProjects({ eventName, dispatchBrowsers = {}, files = [], changedL
   const majorDiff = isMajorDiff(files, changedLines);
   if (eventName === "pull_request") {
     if (!majorDiff && editPermissions.has(collaboratorPermission)) {
-      return { projects: [projects[0]], reason: "Small change from an edit-level collaborator" };
+      return { projects: [projects[0]], reason: "Small change from a repository owner or collaborator" };
     }
     return { projects, reason: majorDiff ? "Major or sensitive-path change" : "Contributor permission is not confirmed" };
   }
@@ -58,4 +64,4 @@ function selectProjects({ eventName, dispatchBrowsers = {}, files = [], changedL
   return { projects: [projects[0]], reason: "Default Chromium smoke run" };
 }
 
-module.exports = { projects, selectProjects };
+module.exports = { permissionFromAssociation, projects, selectProjects };
