@@ -290,6 +290,8 @@
 
       let compiledApp = inlineScript(indexSource, "game-storage.js", storageSource);
       compiledApp = inlineScript(compiledApp, "notifications.js", notificationsSource);
+      compiledApp = inlineScript(compiledApp, "files.js", filesSource);
+      compiledApp = inlineScript(compiledApp, "backups.js", backupsScriptSource);
       const appSourcePayload = btoa(unescape(encodeURIComponent(indexSource)));
       compiledApp = compiledApp.replace("<head>", `<head><meta name="utilities-running-source" content="${appSourcePayload}">`);
 

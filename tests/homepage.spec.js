@@ -3,13 +3,149 @@ const { pathToFileURL } = require("node:url");
 const { readFile } = require("node:fs/promises");
 
 test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => { window.__utilitiesRunningCommit = "test-running"; });
+  await context.addInitScript(() => {
+    window.__utilitiesRunningCommit = "test-running";
+    if (!sessionStorage.getItem("__test-show-first-launch-restore")) {
+      localStorage.setItem("utilities-first-launch-restore-asked", "true");
+    }
+  });
   await context.route("https://api.github.com/repos/DennisA-byte/Utilities/commits/main", async (route) => {
       await route.fulfill({ json: { sha: "test-running" } });
   });
 });
 
 test.describe("Utilities homepage", () => {
+  test("asks about restoring a backup only on first launch", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      sessionStorage.setItem("__test-show-first-launch-restore", "true");
+      localStorage.removeItem("utilities-first-launch-restore-asked");
+    });
+    await page.reload();
+
+    const restoreDialog = page.getByRole("dialog", { name: "Restore a backup?" });
+    await expect(restoreDialog).toBeVisible();
+    await page.getByRole("button", { name: "Not now" }).click();
+    await page.reload();
+    await expect(restoreDialog).toBeHidden();
+  });
+
+  test("restores a selected backup from the first-launch prompt", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      sessionStorage.setItem("__test-show-first-launch-restore", "true");
+      localStorage.removeItem("utilities-first-launch-restore-asked");
+    });
+    await page.reload();
+    const backup = await page.evaluate(async () => {
+      localStorage.setItem("utilities-pinned-games", JSON.stringify(["restored-game"]));
+      const text = await UtilitiesBackups.createBackup({ appDataGroups: ["library"], games: [] });
+      localStorage.setItem("utilities-pinned-games", JSON.stringify(["current-game"]));
+      return text;
+    });
+
+    await page.getByRole("button", { name: "Choose backup" }).click();
+    await page.locator("#first-launch-backup-file").setInputFiles({
+      name: "utilities-backup.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(backup),
+    });
+    await expect(page.getByRole("status").filter({ hasText: "Backup restored." })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("utilities-pinned-games"))).toBe(JSON.stringify(["restored-game"]));
+  });
+
+  test("prompts for a password when restoring an encrypted first-launch backup", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      sessionStorage.setItem("__test-show-first-launch-restore", "true");
+      localStorage.removeItem("utilities-first-launch-restore-asked");
+    });
+    await page.reload();
+    const backup = await page.evaluate(async () => {
+      localStorage.setItem("utilities-pinned-games", JSON.stringify(["encrypted-restored-game"]));
+      const encrypted = await UtilitiesBackups.createBackup(
+        { appDataGroups: ["library"], games: [] },
+        { password: "restore password" },
+      );
+      localStorage.setItem("utilities-pinned-games", JSON.stringify(["current-game"]));
+      return encrypted;
+    });
+    await page.getByRole("button", { name: "Choose backup" }).click();
+    await page.locator("#first-launch-backup-file").setInputFiles({
+      name: "encrypted-utilities-backup.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(backup),
+    });
+    await page.locator("#backup-password-input").fill("restore password");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await expect(page.getByRole("status").filter({ hasText: "Backup restored." })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("utilities-pinned-games"))).toBe(JSON.stringify(["encrypted-restored-game"]));
+  });
+
+  test("runs quick backup with the saved profile and shows progress", async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("utilities-backup-settings", JSON.stringify({
+        note: "quick copy",
+        appDataGroups: ["library"],
+        includeSource: false,
+        encrypt: false,
+        games: [],
+      }));
+    });
+    await page.goto("/index.html");
+    const quickBackup = page.getByRole("button", { name: "Quick backup" });
+    await expect(quickBackup).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    await quickBackup.click();
+    const progressDialog = page.getByRole("dialog", { name: "Quick backup" });
+    await expect(progressDialog).toBeVisible();
+    await expect(page.locator("#quick-backup-progress-status")).toHaveText("Quick backup downloaded.");
+    const download = await downloadPromise;
+    const backupPath = testInfo.outputPath("quick-backup.json");
+    await download.saveAs(backupPath);
+    const backup = JSON.parse(await readFile(backupPath, "utf8"));
+    expect(backup.body.backupSettings.note).toBe("quick copy");
+    expect(backup.body.backupSettings.appDataGroups).toEqual(["library"]);
+  });
+
+  test("warns when quick-backup password changes and accepts re-entry", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("utilities-backup-settings", JSON.stringify({
+        note: "",
+        appDataGroups: [],
+        includeSource: false,
+        encrypt: true,
+        games: [],
+      }));
+    });
+    await page.goto("/index.html");
+    await page.evaluate(async () => {
+      await UtilitiesBackups.createBackup({ includeAppData: false, games: [] }, { password: "old password" });
+      localStorage.setItem("utilities-backup-settings", JSON.stringify({
+        note: "",
+        appDataGroups: [],
+        includeSource: false,
+        encrypt: true,
+        games: [],
+      }));
+    });
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Quick backup" }).click();
+    await page.locator("#backup-password-input").fill("new password");
+    await page.getByRole("button", { name: "Continue" }).click();
+    const warning = page.getByRole("dialog", { name: "Backup password changed" });
+    await expect(warning).toBeVisible();
+    await page.getByLabel("Re-enter new password").fill("wrong password");
+    await page.getByRole("button", { name: "Confirm password change" }).click();
+    await expect(page.locator("#quick-backup-password-change-status")).toHaveText("The re-entered password does not match.");
+    await page.getByLabel("Re-enter new password").fill("new password");
+    await page.getByRole("button", { name: "Confirm password change" }).click();
+    await expect(page.locator("#quick-backup-progress-status")).toHaveText("Quick backup downloaded.");
+    await downloadPromise;
+    expect(await page.evaluate(() => UtilitiesBackups.matchesRememberedPassword("new password"))).toBe(true);
+  });
+
   test("shows the settings page with General as the default section", async ({ page }) => {
     await page.goto("/index.html");
     await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();

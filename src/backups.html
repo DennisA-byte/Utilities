@@ -137,6 +137,7 @@
               <span>Note to include<textarea id="backup-note" maxlength="500" placeholder="Add a note for this backup"></textarea></span>
             </label>
             <label class="field-row"><input id="include-source" type="checkbox"><span>Include source code in a single file</span></label>
+            <label class="field-row"><input id="save-backup-settings" type="checkbox"><span>Save these settings in the backup and enable Quick backup on the homepage</span></label>
           </section>
 
           <section class="settings-panel" data-panel="app-data" aria-label="App data backup settings">
@@ -149,8 +150,7 @@
             <h3>Encryption</h3>
             <label class="field-row"><input id="encrypt-backup" type="checkbox"><span>Encrypt this backup</span></label>
             <label class="field-row"><span>Password<input id="backup-password" type="password" autocomplete="new-password" disabled></span></label>
-            <label class="field-row"><span>Confirm password<input id="backup-password-confirm" type="password" autocomplete="new-password" disabled></span></label>
-            <p class="field-hint">A forgotten password cannot be recovered. Keep it somewhere safe.</p>
+            <p class="field-hint">A forgotten password cannot be recovered. Keep it somewhere safe. If the password changes, you will be asked to re-enter it once.</p>
           </section>
         </div>
       </div>
@@ -162,6 +162,19 @@
       <button id="cancel-backup" class="cancel" type="button" hidden>Cancel backup</button>
       <input id="backup-file" type="file" accept=".json,application/json" hidden>
     </div>
+
+    <dialog id="password-change-dialog" aria-labelledby="password-change-heading">
+      <h2 id="password-change-heading">Backup password changed</h2>
+      <p class="field-hint">This password differs from the one used previously. Re-enter the new password to confirm the change.</p>
+      <form id="password-change-form">
+        <label class="field-row"><span>Re-enter new password<input id="password-change-confirm" type="password" autocomplete="new-password" required></span></label>
+        <p id="password-change-status" class="backup-status" role="status"></p>
+        <div class="backup-actions">
+          <button type="submit">Confirm password change</button>
+          <button class="secondary" id="password-change-cancel" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
 
     <section class="backup-progress" aria-labelledby="progress-heading">
       <h2 id="progress-heading">Progress</h2>
@@ -197,11 +210,12 @@
     const backupStatus = document.getElementById("backup-status");
     const encryptCheckbox = document.getElementById("encrypt-backup");
     const passwordInput = document.getElementById("backup-password");
-    const passwordConfirmInput = document.getElementById("backup-password-confirm");
+    const saveSettingsCheckbox = document.getElementById("save-backup-settings");
     const backupEverythingCheckbox = document.getElementById("backup-everything");
     const appDataGroupsContainer = document.getElementById("app-data-groups");
     const includeSourceCheckbox = document.getElementById("include-source");
     let activeController = null;
+    let savedBackupSettings = null;
     const activeGatherTasks = new Set();
 
     settingsTree.addEventListener("click", (event) => {
@@ -217,8 +231,14 @@
 
     encryptCheckbox.addEventListener("change", () => {
       passwordInput.disabled = !encryptCheckbox.checked;
-      passwordConfirmInput.disabled = !encryptCheckbox.checked;
     });
+    try {
+      savedBackupSettings = UtilitiesBackups.getSavedSettings();
+      saveSettingsCheckbox.checked = Boolean(savedBackupSettings);
+    } catch (error) {
+      backupStatus.dataset.state = "failed";
+      backupStatus.textContent = error.message;
+    }
 
     function populateAppDataGroups() {
       UtilitiesBackups.listAppDataGroups().forEach((group) => {
@@ -250,6 +270,24 @@
       backupEverythingCheckbox.checked = choices.length > 0 && selectedCount === choices.length;
       backupEverythingCheckbox.indeterminate = selectedCount > 0 && selectedCount < choices.length;
       choices.forEach((choice) => { choice.disabled = backupEverythingCheckbox.checked; });
+    }
+
+    function applySavedBackupSettings() {
+      if (!savedBackupSettings) return;
+      document.getElementById("backup-note").value = savedBackupSettings.note;
+      includeSourceCheckbox.checked = savedBackupSettings.includeSource;
+      encryptCheckbox.checked = savedBackupSettings.encrypt;
+      passwordInput.disabled = !savedBackupSettings.encrypt;
+      const appDataGroups = new Set(savedBackupSettings.appDataGroups);
+      appDataGroupsContainer.querySelectorAll("input[data-app-data-group]").forEach((input) => {
+        input.checked = appDataGroups.has(input.dataset.appDataGroup);
+      });
+      const games = new Map(savedBackupSettings.games.map((game) => [game.file, game]));
+      settingsContent.querySelectorAll("input[data-game-file]").forEach((input) => {
+        const game = games.get(input.dataset.gameFile);
+        if (game) input.checked = input.dataset.kind === "code" ? game.includeCode : game.includeData;
+      });
+      updateBackupEverythingState();
     }
 
     backupEverythingCheckbox.addEventListener("change", () => {
@@ -311,6 +349,7 @@
         games.forEach((game, index) => {
           addGamePage(game, index);
         });
+        applySavedBackupSettings();
         gameListStatus.textContent = games.length ? "" : "No played or saved games were found.";
         updateBackupEverythingState();
       } catch (error) {
@@ -385,11 +424,54 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    function confirmPasswordChange(password) {
+      return new Promise((resolve) => {
+        const dialog = document.getElementById("password-change-dialog");
+        const form = document.getElementById("password-change-form");
+        const input = document.getElementById("password-change-confirm");
+        const status = document.getElementById("password-change-status");
+        const finish = (confirmed) => {
+          form.removeEventListener("submit", submit);
+          document.getElementById("password-change-cancel").removeEventListener("click", cancel);
+          dialog.removeEventListener("cancel", cancel);
+          dialog.close();
+          input.value = "";
+          resolve(confirmed);
+        };
+        const submit = (event) => {
+          event.preventDefault();
+          if (input.value !== password) {
+            status.textContent = "The re-entered password does not match.";
+            return;
+          }
+          finish(true);
+        };
+        const cancel = () => finish(false);
+        status.textContent = "";
+        input.value = "";
+        form.addEventListener("submit", submit);
+        document.getElementById("password-change-cancel").addEventListener("click", cancel);
+        dialog.addEventListener("cancel", cancel);
+        dialog.showModal();
+        input.focus();
+      });
+    }
+
     async function startBackup() {
-      if (encryptCheckbox.checked && (!passwordInput.value || passwordInput.value !== passwordConfirmInput.value)) {
+      if (encryptCheckbox.checked && !passwordInput.value) {
         backupStatus.dataset.state = "failed";
-        backupStatus.textContent = passwordInput.value ? "The passwords do not match." : "Enter and confirm a backup password.";
+        backupStatus.textContent = "Enter a backup password.";
         return;
+      }
+      if (encryptCheckbox.checked) {
+        try {
+          const matchesPreviousPassword = await UtilitiesBackups.matchesRememberedPassword(passwordInput.value);
+          if (matchesPreviousPassword === false && !await confirmPasswordChange(passwordInput.value)) return;
+        } catch (error) {
+          backupStatus.dataset.state = "failed";
+          backupStatus.textContent = error.message || "Could not verify the backup password.";
+          return;
+        }
       }
       activeController = new AbortController();
       resetProgress();
@@ -403,6 +485,7 @@
           note: document.getElementById("backup-note").value,
           appDataGroups: [...appDataGroupsContainer.querySelectorAll("input[data-app-data-group]:checked")].map((input) => input.dataset.appDataGroup),
           includeSource: document.getElementById("include-source").checked,
+          saveSettings: saveSettingsCheckbox.checked,
           games: selectedGames(),
         }, {
           signal: activeController.signal,
@@ -418,6 +501,7 @@
         document.querySelector(".progress-summary").dataset.state = "complete";
         backupStatus.dataset.state = "complete";
         backupStatus.textContent = "Backup downloaded.";
+        window.parent.postMessage("utilities-backup-settings-changed", "*");
       } catch (error) {
         const cancelled = error.name === "AbortError";
         const activeRow = progressRows.find((row) => row.dataset.state === "running");
@@ -452,7 +536,10 @@
         document.querySelector(".progress-summary").dataset.state = "complete";
         backupStatus.dataset.state = "complete";
         backupStatus.textContent = "Backup restored.";
+        savedBackupSettings = UtilitiesBackups.getSavedSettings();
+        saveSettingsCheckbox.checked = Boolean(savedBackupSettings);
         await populateGames();
+        applySavedBackupSettings();
       } catch (error) {
         const activeRow = progressRows.find((row) => row.dataset.state === "running");
         if (activeRow) {

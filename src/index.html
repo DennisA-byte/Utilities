@@ -81,6 +81,48 @@
 				</div>
 			</form>
 		</dialog>
+		<dialog id="first-launch-restore-dialog" aria-labelledby="first-launch-restore-title">
+			<h2 id="first-launch-restore-title">Restore a backup?</h2>
+			<p class="dialog-copy">If you have a Utilities backup, you can restore it now. You can also do this later from the Backups page.</p>
+			<div class="dialog-actions">
+				<button id="choose-first-launch-backup" type="button">Choose backup</button>
+				<button class="dialog-close" id="dismiss-first-launch-restore" type="button">Not now</button>
+			</div>
+		</dialog>
+		<dialog id="backup-password-dialog" aria-labelledby="backup-password-title">
+			<h2 id="backup-password-title">Backup password</h2>
+			<p class="dialog-copy" id="backup-password-copy"></p>
+			<form id="backup-password-form">
+				<label for="backup-password-input">Password</label>
+				<input id="backup-password-input" type="password" autocomplete="current-password" required>
+				<div class="dialog-actions">
+					<button type="submit">Continue</button>
+					<button class="dialog-close" id="backup-password-cancel" type="button">Cancel</button>
+				</div>
+			</form>
+		</dialog>
+		<dialog id="quick-backup-password-change-dialog" aria-labelledby="quick-backup-password-change-title">
+			<h2 id="quick-backup-password-change-title">Backup password changed</h2>
+			<p class="dialog-copy">This password differs from the one used previously. Re-enter the new password to confirm the change.</p>
+			<form id="quick-backup-password-change-form">
+				<label for="quick-backup-password-confirm">Re-enter new password</label>
+				<input id="quick-backup-password-confirm" type="password" autocomplete="new-password" required>
+				<p id="quick-backup-password-change-status" role="status"></p>
+				<div class="dialog-actions">
+					<button type="submit">Confirm password change</button>
+					<button class="dialog-close" id="quick-backup-password-change-cancel" type="button">Cancel</button>
+				</div>
+			</form>
+		</dialog>
+		<dialog id="quick-backup-progress-dialog" aria-labelledby="quick-backup-progress-title">
+			<h2 id="quick-backup-progress-title">Quick backup</h2>
+			<p class="dialog-copy" id="quick-backup-progress-status" role="status" aria-live="polite">Preparing backup...</p>
+			<progress id="quick-backup-progress" max="100" value="0">0%</progress>
+			<div class="dialog-actions">
+				<button class="dialog-close" id="quick-backup-progress-close" type="button" hidden>Close</button>
+			</div>
+		</dialog>
+		<input id="first-launch-backup-file" type="file" accept=".json,application/json" hidden>
 		<section aria-labelledby="pinned-heading">
 			<h2 id="pinned-heading">Your games</h2>
 			<div id="status" role="status"></div>
@@ -89,6 +131,7 @@
 				<button class="tab" role="tab" aria-selected="false" data-tab="recent">Recently played</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="offline">Offline</button>
 				<button class="tab" role="tab" aria-selected="false" data-tab="my-games">My games</button>
+				<button id="quick-backup-button" type="button" hidden>Quick backup</button>
 				<a class="primary browse-link network-action" href="AllFIles.html">Browse all games</a>
 				<label class="upload-button"><span>Upload HTML game</span><input id="upload-game" type="file" accept=".html,text/html"></label>
 			</div>
@@ -97,14 +140,205 @@
 	</main>
 	<script src="game-storage.js"></script>
 	<script src="notifications.js"></script>
+	<script src="files.js"></script>
+	<script src="backups.js"></script>
 	<script>
 		const gamePanel = document.getElementById("game-panel");
 		const status = document.getElementById("status");
+		const quickBackupButton = document.getElementById("quick-backup-button");
+		const backupPasswordDialog = document.getElementById("backup-password-dialog");
+		const backupPasswordForm = document.getElementById("backup-password-form");
+		const backupPasswordInput = document.getElementById("backup-password-input");
+		const backupPasswordTitle = document.getElementById("backup-password-title");
+		const backupPasswordCopy = document.getElementById("backup-password-copy");
+		const quickBackupProgressDialog = document.getElementById("quick-backup-progress-dialog");
+		const quickBackupProgress = document.getElementById("quick-backup-progress");
+		const quickBackupProgressStatus = document.getElementById("quick-backup-progress-status");
+		const quickBackupProgressClose = document.getElementById("quick-backup-progress-close");
 		let activeTab = "pinned";
 
 		function showStatus(message) {
 			status.textContent = message;
 			window.setTimeout(() => { status.textContent = ""; }, 3000);
+		}
+
+		function refreshQuickBackupButton() {
+			quickBackupButton.hidden = !UtilitiesBackups.getSavedSettings();
+		}
+
+		function requestBackupPassword(title, copy) {
+			return new Promise((resolve) => {
+				const finish = (password) => {
+					backupPasswordForm.removeEventListener("submit", submit);
+					document.getElementById("backup-password-cancel").removeEventListener("click", cancel);
+					backupPasswordDialog.removeEventListener("cancel", cancel);
+					backupPasswordDialog.close();
+					backupPasswordInput.value = "";
+					resolve(password);
+				};
+				const submit = (event) => {
+					event.preventDefault();
+					finish(backupPasswordInput.value);
+				};
+				const cancel = () => finish(null);
+				backupPasswordTitle.textContent = title;
+				backupPasswordCopy.textContent = copy;
+				backupPasswordForm.addEventListener("submit", submit);
+				document.getElementById("backup-password-cancel").addEventListener("click", cancel);
+				backupPasswordDialog.addEventListener("cancel", cancel);
+				backupPasswordDialog.showModal();
+				backupPasswordInput.focus();
+			});
+		}
+
+		function confirmQuickBackupPasswordChange(password) {
+			return new Promise((resolve) => {
+				const dialog = document.getElementById("quick-backup-password-change-dialog");
+				const form = document.getElementById("quick-backup-password-change-form");
+				const input = document.getElementById("quick-backup-password-confirm");
+				const statusElement = document.getElementById("quick-backup-password-change-status");
+				const finish = (confirmed) => {
+					form.removeEventListener("submit", submit);
+					document.getElementById("quick-backup-password-change-cancel").removeEventListener("click", cancel);
+					dialog.removeEventListener("cancel", cancel);
+					dialog.close();
+					input.value = "";
+					resolve(confirmed);
+				};
+				const submit = (event) => {
+					event.preventDefault();
+					if (input.value !== password) {
+						statusElement.textContent = "The re-entered password does not match.";
+						return;
+					}
+					finish(true);
+				};
+				const cancel = () => finish(false);
+				statusElement.textContent = "";
+				input.value = "";
+				form.addEventListener("submit", submit);
+				document.getElementById("quick-backup-password-change-cancel").addEventListener("click", cancel);
+				dialog.addEventListener("cancel", cancel);
+				dialog.showModal();
+				input.focus();
+			});
+		}
+
+		function finishQuickBackup(message, failed = false) {
+			quickBackupProgressStatus.textContent = message;
+			quickBackupProgressStatus.dataset.state = failed ? "failed" : "complete";
+			quickBackupProgressClose.hidden = false;
+		}
+
+		async function startQuickBackup() {
+			let settings;
+			try {
+				settings = UtilitiesBackups.getSavedSettings();
+			} catch (error) {
+				showStatus(error.message);
+				return;
+			}
+			if (!settings) {
+				quickBackupButton.hidden = true;
+				showStatus("Set up backup settings first.");
+				return;
+			}
+			let password = null;
+			if (settings.encrypt) {
+				password = await requestBackupPassword("Quick backup password", "Enter the password to encrypt this quick backup.");
+				if (password === null) return;
+				try {
+					if (await UtilitiesBackups.matchesRememberedPassword(password) === false
+						&& !await confirmQuickBackupPasswordChange(password)) return;
+				} catch (error) {
+					showStatus(error.message || "Could not verify the backup password.");
+					return;
+				}
+			}
+			quickBackupProgress.value = 0;
+			quickBackupProgressClose.hidden = true;
+			quickBackupProgressStatus.textContent = "Preparing backup...";
+			quickBackupProgressStatus.dataset.state = "";
+			quickBackupProgressDialog.showModal();
+			try {
+				const text = await UtilitiesBackups.createBackup({ ...settings, saveSettings: true }, {
+					password,
+					onStage: ({ stage, percent, message }) => {
+						const ranges = { prepare: [0, 5], gather: [5, 60], create: [65, 25], encrypt: [90, 8] };
+						const [start, span] = ranges[stage] || [0, 0];
+						quickBackupProgress.value = start + span * percent / 100;
+						quickBackupProgressStatus.textContent = message || "Creating backup...";
+					},
+					onProgress: ({ current, total, message }) => {
+						quickBackupProgress.value = 5 + (total ? current / total * 60 : 60);
+						quickBackupProgressStatus.textContent = message || "Gathering data...";
+					},
+				});
+				const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+				const link = document.createElement("a");
+				link.href = url;
+				link.download = `utilities-backup-${new Date().toISOString().slice(0, 10)}.json`;
+				link.click();
+				setTimeout(() => URL.revokeObjectURL(url), 1000);
+				quickBackupProgress.value = 100;
+				finishQuickBackup("Quick backup downloaded.");
+				refreshQuickBackupButton();
+			} catch (error) {
+				finishQuickBackup(error.message || "Quick backup failed.", true);
+			}
+		}
+
+		async function restoreFirstLaunchBackup() {
+			const input = document.getElementById("first-launch-backup-file");
+			const file = input.files[0];
+			if (!file) return;
+			try {
+				const text = await file.text();
+				const envelope = JSON.parse(text);
+				const password = envelope.encrypted === true
+					? await requestBackupPassword("Restore backup", "Enter the password for this encrypted backup.")
+					: undefined;
+				if (password === null) return;
+				await UtilitiesBackups.restoreBackup(text, password);
+				showStatus("Backup restored.");
+				refreshQuickBackupButton();
+				await renderTab();
+			} catch (error) {
+				showStatus(error.message || "Could not restore backup.");
+			} finally {
+				input.value = "";
+			}
+		}
+
+		function promptForFirstLaunchRestore() {
+			const key = "utilities-first-launch-restore-asked";
+			try {
+				if (localStorage.getItem(key)) return;
+				localStorage.setItem(key, "true");
+			} catch (error) {
+				showStatus(`First-launch restore prompt unavailable: ${error.message}`);
+				return;
+			}
+			document.getElementById("first-launch-restore-dialog").showModal();
+		}
+
+		document.getElementById("choose-first-launch-backup").addEventListener("click", () => {
+			document.getElementById("first-launch-restore-dialog").close();
+			document.getElementById("first-launch-backup-file").click();
+		});
+		document.getElementById("dismiss-first-launch-restore").addEventListener("click", () => {
+			document.getElementById("first-launch-restore-dialog").close();
+		});
+		document.getElementById("first-launch-backup-file").addEventListener("change", restoreFirstLaunchBackup);
+		quickBackupButton.addEventListener("click", startQuickBackup);
+		quickBackupProgressClose.addEventListener("click", () => quickBackupProgressDialog.close());
+		window.addEventListener("message", (event) => {
+			if (event.data === "utilities-backup-settings-changed") refreshQuickBackupButton();
+		});
+		try {
+			refreshQuickBackupButton();
+		} catch (error) {
+			showStatus(error.message);
 		}
 
 		document.getElementById("settings-button").addEventListener("click", () => {
@@ -262,6 +496,7 @@
 			event.target.value = "";
 		});
 		renderTab();
+		promptForFirstLaunchRestore();
 	</script>
 </body>
 </html>
