@@ -6,31 +6,127 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      chromium:
+        description: Run Chromium
+        type: boolean
+        required: false
+        default: true
+      chrome:
+        description: Run Chrome
+        type: boolean
+        required: false
+        default: false
+      edge:
+        description: Run Microsoft Edge
+        type: boolean
+        required: false
+        default: false
+      firefox:
+        description: Run Firefox
+        type: boolean
+        required: false
+        default: false
+      webkit:
+        description: Run WebKit
+        type: boolean
+        required: false
+        default: false
   schedule:
     - cron: '0 0 * * 1'
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  select-tests:
+    name: Select browser projects
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      reason: ${{ steps.select.outputs.reason }}
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test browser selection policy
+        run: node --test .github/scripts/playwright-project-selector.test.js
+      - name: Select browser projects
+        id: select
+        uses: actions/github-script@v7
+        env:
+          DISPATCH_CHROMIUM: ${{ inputs.chromium }}
+          DISPATCH_CHROME: ${{ inputs.chrome }}
+          DISPATCH_EDGE: ${{ inputs.edge }}
+          DISPATCH_FIREFOX: ${{ inputs.firefox }}
+          DISPATCH_WEBKIT: ${{ inputs.webkit }}
+        with:
+          script: |
+            const { execFileSync } = require("node:child_process");
+            const selectorPath = `${process.env.GITHUB_WORKSPACE}/.github/scripts/playwright-project-selector.js`;
+            const { selectProjects } = require(selectorPath);
+            const eventName = context.eventName;
+            const dispatchBrowsers = {
+              chromium: process.env.DISPATCH_CHROMIUM === "true",
+              chrome: process.env.DISPATCH_CHROME === "true",
+              edge: process.env.DISPATCH_EDGE === "true",
+              firefox: process.env.DISPATCH_FIREFOX === "true",
+              webkit: process.env.DISPATCH_WEBKIT === "true",
+            };
+            let files = [];
+            let changedLines = 0;
+            let collaboratorPermission = "unknown";
+
+            if (eventName === "push" || eventName === "pull_request") {
+              const pullRequest = context.payload.pull_request;
+              const base = pullRequest?.base.sha || context.payload.before;
+              const head = pullRequest?.head.sha || context.payload.after;
+              if (!base || /^0+$/.test(base) || !head) {
+                changedLines = 101;
+              } else {
+                const nameStatus = execFileSync("git", [
+                  "diff", "--name-status", "--no-renames", "-z", base, head,
+                ], { encoding: "utf8" }).split("\0").filter(Boolean);
+                for (let index = 0; index < nameStatus.length; index += 2) {
+                  files.push({ status: nameStatus[index] === "M" ? "modified" : nameStatus[index], path: nameStatus[index + 1] });
+                }
+                const numstat = execFileSync("git", [
+                  "diff", "--numstat", base, head,
+                ], { encoding: "utf8" });
+                changedLines = numstat.split("\n").filter(Boolean).reduce((total, line) => {
+                  const [added, deleted] = line.split("\t");
+                  return total + (Number(added) || 0) + (Number(deleted) || 0);
+                }, 0);
+              }
+            }
+
+            if (eventName === "pull_request") {
+              const association = context.payload.pull_request?.author_association;
+              if (association === "OWNER") collaboratorPermission = "admin";
+              if (association === "COLLABORATOR") collaboratorPermission = "write";
+            }
+
+            const selection = selectProjects({
+              eventName,
+              dispatchBrowsers,
+              files,
+              changedLines,
+              collaboratorPermission,
+            });
+            core.info(`Browser selection: ${selection.reason}`);
+            core.setOutput("matrix", JSON.stringify({ include: selection.projects }));
+            core.setOutput("reason", selection.reason);
+
   test:
+    needs: select-tests
     name: Playwright (${{ matrix.project }})
     timeout-minutes: 10
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - project: chromium
-            browser: chromium
-          - project: chrome
-            browser: chrome
-          - project: edge
-            browser: msedge
-          - project: firefox
-            browser: firefox
-          - project: webkit
-            browser: webkit
+      matrix: ${{ fromJSON(needs.select-tests.outputs.matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

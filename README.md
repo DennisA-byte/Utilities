@@ -210,6 +210,8 @@ The tests cover:
 - toolbar interaction and fullscreen/drag behavior
 - compiled app behavior in different URL contexts
 
+GitHub Actions runs Chromium for small documentation changes, all five browser projects for new files, source/test/config changes, or larger diffs, and the complete matrix weekly. Pull requests use the full matrix unless they are small documentation changes from a repository owner or collaborator. Manual runs expose a checkbox for each browser.
+
 ## Development conventions
 
 This repo intentionally avoids a framework and bundler. Most work happens directly in static HTML and JavaScript files.
